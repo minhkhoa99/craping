@@ -4,7 +4,7 @@ const cheerio = require('cheerio')
 const {addDays, nextFriday, format} = require('date-fns')
 const CURRENCY_SYMBOL = '$';
 const NUMBER_OF_WEEKENDS_TO_SEARCH = 1;
-
+const convert = require('../functinon/convert')
 const formatDate = (date)=> format(date, 'yyyy-MM-dd')
 const getUpCommingWeekends = () =>{
     const weekends = []
@@ -49,10 +49,31 @@ const getUrl = 'https://my.exnesstrade.pro/dashboard?lang=ja&action=login'
             const urlData = `https://my.exnesstrade.pro/reports/orders/initial_start_day/2023-05-17/initial_end_day/2023-05-17/?date_from=2023-02-11&date_to=2023-02-17&sorting%5Bclose_date%5D=DESC&page=0&limit=10`
             await page.goto(urlData)
             const getContentData = []
-
-           const elements = await page.locator('[data-auto="cell_data"] > ._3qJH9 > ._1ZDRI').first().click()
+            await page.click('[data-auto="language_switcher_button"]')
+            await page.waitForTimeout(3000)
+            await page.click('#language_select_values_en > ._1Fc6m')
+            await page.waitForTimeout(2000)
+            const elements = await page.click('[data-auto="cell_data"] > ._3qJH9 > ._1ZDRI')
+       
+          await page.waitForTimeout(10000)
           
+          const hiddenDivHandle = await page.evaluateHandle(() => {
+            const hiddenDiv = document.querySelector('[data-auto="orderDetail"] > ._2pyAa'); 
+            return hiddenDiv;
+          });
         
+          const hiddenDivContent = await hiddenDivHandle.evaluate((el) => el.innerText);
+        
+          const data = []
+          data.push(hiddenDivContent)
+         
+         const result = convert.convertObj(data)
+           
+        
+          
+        console.log(result);
+        
+
             // const text = await page.content("._2fam6")
             // console.log(text)
             // const $ = cheerio.load(await page.content());
