@@ -1,98 +1,112 @@
-const axios = require('axios')
-const {chromium} = require('playwright')
-const cheerio = require('cheerio')
-const {addDays, nextFriday, format} = require('date-fns')
-const CURRENCY_SYMBOL = '$';
-const NUMBER_OF_WEEKENDS_TO_SEARCH = 1;
-const convert = require('../functinon/convert')
-const formatDate = (date)=> format(date, 'yyyy-MM-dd')
-const getUpCommingWeekends = () =>{
-    const weekends = []
-    let currentDate = new Date();
-    const timeIntervals = [
-        { days: 1, includeCurrentDay: true },
-        { days: 3, includeCurrentDay: false },
-        { days: 7, includeCurrentDay: false }
-      ];
-      
-      for (let interval of timeIntervals) {
-        if (interval.includeCurrentDay) {
-          const friday = formatDate(currentDate);
-          const sunday = formatDate(addDays(currentDate, 2));
-          weekends.push({ friday, sunday });
-        }
-      
-        currentDate = addDays(currentDate, interval.days);
-      
-        const friday = formatDate(currentDate);
-        const sunday = formatDate(addDays(currentDate, 2));
-        weekends.push({ friday, sunday });
-      }
-      
-      return weekends;
+const { chromium } = require('playwright')
+const { createResponse, readingConfigIni } = require('../utils')
+const { code, message } = require('../constant')
+const moment = require('moment')
+const querystring = require('querystring')
+
+async function loginExness(page, url, username, password) {
+  try {
+    await page.goto(url)
+    await page.fill('input[name = "login"]', username)
+    await page.fill('input[name = "password"]', password)
+    await page.click('#mui-1')
+    await page.waitForNavigation()
+  } catch (error) {
+    console.log(error)
+  }
 }
-async function checkLogin(req,res){
-const getUrl = 'https://my.exnesstrade.pro/dashboard?lang=ja&action=login'
 
-    try{
-        const browser = await chromium.launch({ headless: false });
-        const context = await browser.newContext();
-        const page = await context.newPage();
-       
-        await page.goto(getUrl)
-        await page.fill('input[name = "login"]','broker@p2t.sg')
-        await page.fill('input[name = "password"]','Px9bvWSB')
-
-        await page.click('#mui-1')
-        await page.waitForNavigation()
-       
-            const urlData = `https://my.exnesstrade.pro/reports/orders/initial_start_day/2023-05-17/initial_end_day/2023-05-17/?date_from=2023-02-11&date_to=2023-02-17&sorting%5Bclose_date%5D=DESC&page=0&limit=10`
-            await page.goto(urlData)
-            const getContentData = []
-            await page.click('[data-auto="language_switcher_button"]')
-            await page.waitForTimeout(3000)
-            await page.click('#language_select_values_en > ._1Fc6m')
-            await page.waitForTimeout(2000)
-            const elements = await page.click('[data-auto="cell_data"] > ._3qJH9 > ._1ZDRI')
-       
-          await page.waitForTimeout(10000)
-          
-          const hiddenDivHandle = await page.evaluateHandle(() => {
-            const hiddenDiv = document.querySelector('[data-auto="orderDetail"] > ._2pyAa'); 
-            return hiddenDiv;
-          });
-        
-          const hiddenDivContent = await hiddenDivHandle.evaluate((el) => el.innerText);
-        
-          const data = []
-          data.push(hiddenDivContent)
-         
-         const result = convert.convertObj(data)
-           
-        
-          
-        console.log(result);
-        
-
-            // const text = await page.content("._2fam6")
-            // console.log(text)
-            // const $ = cheerio.load(await page.content());
-        
-            // $(`#_2fam6 > .bibp9`).each((index, element) => {
-            //     getContentData.push($(element).text());
-            //   });
-                
-            //     console.log(getContentData);
-    //         await page.waitForTimeout(10000)
- 
-        
-        
-     
-    }catch(error){
-        console.log(error);
+// getData
+async function getDataExness(page, url, res, queryParams) {
+  try {
+    const utc = new Date().toJSON().slice(0, 10).replace(/-/g, '-')
+    const urlGetDay = `${url}/initial_start_day/${utc}/initial_end_day/${utc}`
+    const queryString = querystring.stringify(queryParams)
+    const urlData = `${urlGetDay}/?${queryString}`
+    await page.goto(urlData)
+    await page.click('[data-auto="language_switcher_button"]')
+    await page.waitForTimeout(2000)
+    await page.click('#language_select_values_en > ._1Fc6m')
+    await page.waitForTimeout(5000)
+    // click get data
+    const getTitle = []
+    const getInstrument = await page.getByText('Instrument').first().textContent()
+    await page.waitForTimeout(1000)
+    const getUsd = await page.getByText('USDJPYm').first().textContent()
+    getTitle.push(getInstrument, getUsd)
+    const divs = await page.$$('div._2i-_7 div._2WW5r div._3SxZ6')
+    const data = []
+    for (const div of divs) {
+      const click = await div.$('span._1ZDRI')
+      await click.click()
+      await div.waitForSelector('div._2fam6', { state: 'visible' })
+      const result = await div.$eval('div._2pyAa', (element) => element.textContent)
+      data.push(result)
+      await page.waitForTimeout(3000)
     }
+    const returnData = convertObj(data)
+    return createResponse(res, true, { title: getTitle, getData: returnData })
+  } catch (error) {
+    console.log(error)
+  }
 }
+// run logic
+async function crawExnesstradePro(event, res) {
+  const browser = await chromium.launch({ headless: false })
+  try {
+    const { fromdate, todate } = event.query
+    const queryParams = {
+      'date_from': fromdate,
+      'date_to': todate,
+      'sorting[close_date]': 'DESC',
+      'page': 0,
+      'limit': 10,
+    }
+    const context = await browser.newContext()
+    const page = await context.newPage()
+    // get page config ini
+    const iniConfig = await readingConfigIni()
+    const username = iniConfig.EXNESS.USERNAME
+    const password = iniConfig.EXNESS.PASSWORD
+    const urlLogin = iniConfig.EXNESS.URL_LOGIN
+    const urlCrawl = iniConfig.EXNESS.URL_CRAWL
+    // login
+    await loginExness(page, urlLogin, username, password)
+    //getData
+    await getDataExness(page, urlCrawl, res, queryParams)
+  } catch (error) {
+    console.log(error)
+    await browser.close()
+    return createResponse(res, false, null, code.ERROR, message.server_error )
+  }
+}
+// convert data
+const convertObj = (data)=>{
+  try {
+    const formatTime = (timeString) => {
+      const formattedTime = moment(timeString, 'DD MMM YYYYHH:mm:ss').format('DD MMM YYYY HH:mm:ss')
+      return formattedTime
+    }
+    return data.map((item) => {
+      const orderMatch = item.match(/Order in MT(\d+)/)
+      const openTimeMatch = item.match(/Open time(.+?)Close time/)
+      const closeTimeMatch = item.match(/Close time(.+?)Tick History/)
+      const volumeMatch = item.match(/Volume(.+?)Profit/)
+      const profitMatch = item.match(/Profit(.+)/)
 
-module.exports ={
-    checkLogin
+      return {
+        'Order in MT': orderMatch ? parseInt(orderMatch[1]) : null,
+        'Open time': openTimeMatch ? formatTime(openTimeMatch[1].trim()) : null,
+        'Close time': closeTimeMatch ? formatTime(closeTimeMatch[1].trim()) : null,
+        'Volume': volumeMatch ? volumeMatch[1].trim().replace('Lots', 'Lots ') : null,
+        'Profit': profitMatch ? profitMatch[1].trim() : null,
+      }
+    })
+  } catch (error) {
+    console.log(error)
+  }
+}
+module.exports = {
+  crawExnesstradePro,
+  loginExness,
 }
