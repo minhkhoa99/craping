@@ -1,9 +1,6 @@
 const { chromium } = require('playwright')
-const { createResponse, readingConfigIni } = require('../utils')
-const { code, message } = require('../constant')
 const moment = require('moment')
 const querystring = require('querystring')
-
 async function loginExness(page, url, username, password) {
   try {
     await page.goto(url)
@@ -106,7 +103,41 @@ const convertObj = (data)=>{
     console.log(error)
   }
 }
+
 module.exports = {
   crawExnesstradePro,
   loginExness,
+}
+
+module.exports.getDate = (req,res)=>{
+  const startDate = moment('2023/02/18', 'YYYY/MM/DD');
+const endDate = moment('2023/04/30', 'YYYY/MM/DD'); // Thay đổi ngày kết thúc để kiểm tra
+
+const diffDays = endDate.diff(startDate, 'days');
+console.log(diffDays);
+if (diffDays >= 0 && diffDays <=3 || (diffDays > 3 && diffDays < 7)) {
+  console.log(`Khoảng từ ${startDate.format('YYYY/MM/DD')} đến ${endDate.format('YYYY/MM/DD')}`);
+} else if (diffDays >= 7) {
+  const totalWeeks = Math.ceil(diffDays / 7);
+
+  let currentStartDate = moment(startDate);
+  let currentEndDate = moment(startDate).add(6, 'days');
+
+  // In ra các khoảng có độ dài 7 ngày
+  for (let i = 0; i < totalWeeks; i++) {
+    // Đảm bảo không vượt quá ngày kết thúc
+    if (currentEndDate.isAfter(endDate)) {
+      currentEndDate = moment(endDate);
+    }
+
+    console.log(`Khoảng từ ${currentStartDate.format('YYYY/MM/DD')} đến ${currentEndDate.format('YYYY/MM/DD')}`);
+
+    // Cập nhật ngày bắt đầu và ngày kết thúc cho tuần tiếp theo
+    currentStartDate = moment(currentEndDate).add(1, 'day');
+    currentEndDate = moment(currentStartDate).add(6, 'days');
+  }
+}else if(diffDays<0){
+  console.log('eroor');
+}
+  
 }
