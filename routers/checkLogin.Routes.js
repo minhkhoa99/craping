@@ -1,5 +1,5 @@
 const express = require("express");
 const router = express.Router();
 const checkLogin = require('../controller/checkLogin')
-router.post('/check',checkLogin.checkLogin)
+router.get('/check',checkLogin.crawExnesstradePro)
 module.exports = router
