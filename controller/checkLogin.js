@@ -26,8 +26,8 @@ async function getDataExness(page, url, res, queryParams) {
     const urlData = `${url}/?${queryString}`
     await page.goto(urlData)
  
-    page.waitForTimeout(3000)
-  // do {
+   await page.waitForTimeout(3000)
+  do {
 
     let parentEls = await page.$$('div[data-auto="row"]')
     
@@ -47,11 +47,25 @@ async function getDataExness(page, url, res, queryParams) {
     
   }
   console.log(listAccountId);
-// }while (!await page.evaluate(async ()=>{
-//     console.log(13213);
-//     const nextButton = document.getElementsByClassName('WlV1S')
-//     return nextButton[19].classList.contains('_3cmGt')
-//   }))
+  const el = await page.evaluate(() => {
+    const elements = Array.from(document.getElementsByClassName('pcHFO'));
+    if (elements.length >= 3) {
+      return elements[2].innerText;
+    } else {
+      return null; // Return null if there are less than 3 elements with the class name
+    }
+  });
+  console.log(el);
+  
+  const nextPageButton = (await page.$$('div._28HMx div.pcHFO [target="_self"] svg._31SPq'))[4]
+ 
+  await nextPageButton.click()
+  await page.waitForTimeout(3000)
+}while (!await page.evaluate(async ()=>{
+    console.log(13213);
+    const nextButton = document.getElementsByClassName('WlV1S')
+    return nextButton[19].classList.contains('_3cmGt')
+  }))
  
 //  const getAccountId = listAccountId.map((e)=>{return e[0]})
 
@@ -98,12 +112,10 @@ return convertObj(data)
 // run logic
 async function crawExnesstradePro(event, res) {
   const browser = await chromium.launch({ headless: false })
-
   try {
     const { fromdate, todate } = event.query
     const startDate = moment(fromdate, 'YYYY-MM-DD', true);
     const endDate = moment(todate, 'YYYY-MM-DD', true)
-    const rs =[]
    
   
    
@@ -116,26 +128,25 @@ async function crawExnesstradePro(event, res) {
     // login
     await loginExness(page, urlLogin, username, password)
 //getDate
-const dateData = await calculateDateRanges();
+// const dateData = calculateDateRanges();
 
     //getData
 
-    for(const {start,end} of dateData){
+   
+    // for(const {start,end} of dateData){
     
-      console.log(`Crawling data from ${start} to ${end}`);
+      // console.log(`Crawling data from ${start} to ${end}`);
       const queryParams = {
-        'reward_date_from': start,
-        'reward_date_to': end,
+        'reward_date_from': '2007-01-01',
+        'reward_date_to': '2023-06-02',
         'sorting[reward_date]': 'DESC',
         'page': 0,
-        'limit': 10,
+        'limit': 2,
       }
       const result = await getDataExness(page, urlCrawl,res, queryParams);
-    rs.push(result)
-    }
+    console.log(result);
+    // }
     
-    // return await res.status(200).json({mss:"ss", data: rs})
-
     // await getDataExness(page, urlCrawl, res, queryParams)
   } catch (error) {
     console.log(error)
@@ -231,25 +242,24 @@ module.exports = {
 //    return dateRanges;
   
 // }
+// function calculateDateRanges() {
+//   const today = moment().subtract(1, 'day'); // return 1 day with today
+//   const finalEndDate = moment("2023-01-01");
+//   const queryParamsList = [];
+//   let endDate = moment(today);
 
-function calculateDateRanges() {
-  const today = moment().subtract(1, 'day'); // return 1 day with today
-  const finalEndDate = moment("2023-01-01");
-  const queryParamsList = [];
-  let endDate = moment(today);
+//   while (endDate.diff(finalEndDate, 'days') >= 0) { // check endDate
+//     const startDate = moment(endDate).subtract(6, 'days'); //last week
 
-  while (endDate.diff(finalEndDate, 'days') >= 0) { // check endDate
-    const startDate = moment(endDate).subtract(6, 'days'); //last week
-
-    queryParamsList.push({
-      start: moment.max(startDate, finalEndDate).format("YYYY-MM-DD"), // select max days after startDate and finalEndDate
-      end: endDate.format("YYYY-MM-DD")
-    });
+//     queryParamsList.push({
+//       start: moment.max(startDate, finalEndDate).format("YYYY-MM-DD"), // select max days after startDate and finalEndDate
+//       end: endDate.format("YYYY-MM-DD")
+//     });
 
     
 
-    endDate = moment(startDate).subtract(1, 'day'); // return 1 day create new endDate
-  }
+//     endDate = moment(startDate).subtract(1, 'day'); // return 1 day create new endDate
+//   }
 
-  return queryParamsList;
-}
+//   return queryParamsList;
+// }
