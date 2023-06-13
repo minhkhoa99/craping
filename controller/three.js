@@ -1,7 +1,7 @@
 const { chromium } = require('playwright-extra')
 const RecaptchaPlugin = require('puppeteer-extra-plugin-recaptcha')
 const { code, message, flag, resMessage, scrapLogMessage, dateFormat, modeAPI } = require('../constant')
-const { createResponse, readingConfigIni, saveScrapLog, getListDays } = require('../utils')
+const { createResponse, saveScrapLog, getListDays } = require('../utils')
 const moment = require('moment')
 
 const repository = require('../repository')
@@ -31,19 +31,14 @@ async function crawlDataThreeTrader(req, res) {
     isFunctionActive = true
 
     // Respond successfully to customers before data crawl
-    res.status(code.SUCCESS).json({ message: resMessage.three_trader })
+    res.status(code.SUCCESS).json({ message: 'succcess' })
     const { fromDate, toDate } = req.query
 
-    // get page config ini
-    const iniConfig = await readingConfigIni()
-    if (!iniConfig) {
-      const dateNow = moment(Date.now()).format(dateFormat.DATE)
-      await saveScrapLog(URL_PAGE, dateNow, dateNow, flag.FALSE, scrapLogMessage.reading_file_error)
-      await browser.close()
-      isFunctionActive = false
-      return
-    }
-    const { USERNAME, PASSWORD, URL_LOGIN, URL_CRAWL_REBATE, TRADING_ACCOUNTS, URL_CRAWL_ORDER, LIMIT_FIRST_DATE } = iniConfig.THREE_TRADER
+   
+    const {
+      THREE_TRADER_USERNAME, THREE_TRADER_PASSWORD, THREE_TRADER_URL_LOGIN, THREE_TRADER_URL_CRAWL_REBATE,
+      THREE_TRADER_TRADING_ACCOUNTS, THREE_TRADER_URL_CRAWL_ORDER, THREE_TRADER_LIMIT_FIRST_DATE,
+    } = process.env
 
     // Get list date
     let listDate = []
@@ -61,10 +56,10 @@ async function crawlDataThreeTrader(req, res) {
       })
     } else {
       const yesterdayDate = moment().subtract(1, 'days').format(dateFormat.DATE)
-      const isFirstRunning = await repository.isExistDataOfPage(URL_PAGE)
+      const isFirstRunning = await repository.isExistDayError(URL_PAGE)
       if (isFirstRunning) {
         listDate.push({
-          fromDate: LIMIT_FIRST_DATE,
+          fromDate: THREE_TRADER_LIMIT_FIRST_DATE,
           toDate: yesterdayDate,
         })
       } else {
@@ -72,12 +67,12 @@ async function crawlDataThreeTrader(req, res) {
       }
     }
     // get list trading account
-    const listIdTradingAccount = TRADING_ACCOUNTS.split(',')
+    const listIdTradingAccount = THREE_TRADER_TRADING_ACCOUNTS.split(',')
 
     // login to home three
     const context = await browser.newContext()
     const page = await context.newPage()
-    const isLogin = await login(page, URL_LOGIN, USERNAME, PASSWORD)
+    const isLogin = await login(page, THREE_TRADER_URL_LOGIN, THREE_TRADER_USERNAME, THREE_TRADER_PASSWORD)
     if (!isLogin) {
       const dateNow = moment(Date.now()).format(dateFormat.DATE)
       await saveScrapLog(URL_PAGE, dateNow, dateNow, flag.FALSE, scrapLogMessage.login_error)
@@ -90,14 +85,14 @@ async function crawlDataThreeTrader(req, res) {
     for (const obj of listDate) {
       const listData = []
       for (const tradingAccount of listIdTradingAccount) {
-        const isCrawlDataRebateSuccess = await handleRebatePage(page, tradingAccount, URL_CRAWL_REBATE, obj.fromDate, obj.toDate, listData )
+        const isCrawlDataRebateSuccess = await handleRebatePage(page, tradingAccount, THREE_TRADER_URL_CRAWL_REBATE, obj.fromDate, obj.toDate, listData )
         if (!isCrawlDataRebateSuccess) {
           await saveScrapLog(URL_PAGE, obj.fromDate, obj.toDate, flag.FALSE, scrapLogMessage.cannot_crawl_data)
           await browser.close()
           isFunctionActive = false
           return
         }
-        const isCrawlDataOrderSuccess = await handleOrderPage(page, tradingAccount, URL_CRAWL_ORDER, fromDate, toDate, listData)
+        const isCrawlDataOrderSuccess = await handleOrderPage(page, tradingAccount, THREE_TRADER_URL_CRAWL_ORDER, fromDate, toDate, listData)
         if (!isCrawlDataOrderSuccess) {
           await saveScrapLog(URL_PAGE, obj.fromDate, obj.toDate, flag.FALSE, scrapLogMessage.cannot_crawl_data)
           await browser.close()
