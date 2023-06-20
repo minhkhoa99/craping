@@ -1,12 +1,11 @@
 const { chromium } = require('playwright')
-const { code, message, dateFormat, flag, resMessage, scrapLogMessage, modeAPI } = require('../constant')
-const { createResponse, readingConfigIni, saveScrapLog, getListDays } = require('../utils')
+const { code, message, dateFormat, flag, crawlResMessage, crawlLogMessage, modeAPI, brokerAbbrev, metaTradePlatform } = require('../constant')
+const { createResponse, saveCrawlLog, getListDays } = require('../utils')
 const moment = require('moment')
 
 const repository = require('../repository')
 
 let isFunctionActive = false
-const URL_PAGE = 'milton_market'
 
 async function crawlDataMiltonMarket(req, res) {
   const browserHeadlessMode = process.env.BROWSER_HEADLESS_MODE === 'true'
@@ -19,25 +18,18 @@ async function crawlDataMiltonMarket(req, res) {
     isFunctionActive = true
 
     // Respond successfully to customers before data crawl
-    res.status(code.SUCCESS).json({ message: resMessage.milton_market })
+    res.status(code.SUCCESS).json({ message: crawlResMessage.milton_market })
 
-    // get page config ini
-    const iniConfig = await readingConfigIni()
-    if (!iniConfig) {
-      const dateNow = moment(Date.now()).format(dateFormat.DATE)
-      await saveScrapLog(URL_PAGE, dateNow, dateNow, flag.FALSE, scrapLogMessage.reading_file_error)
-      await browser.close()
-      isFunctionActive = false
-      return
-    }
-    const { USERNAME, URL_LOGIN, URL_CRAWL, PASSWORD, LIMIT_FIRST_DATE } = iniConfig.MILTON_PRIME
-
+    const {
+      MILTON_MARKET_USERNAME, MILTON_MARKET_URL_LOGIN, MILTON_MARKET_URL_CRAWL, MILTON_MARKET_PASSWORD,
+      MILTON_MARKET_LIMIT_FIRST_DATE,
+    } = process.env
 
     // Get list date
     let listDate = []
     if (req.query.mode === modeAPI.MANUAL) {
       const { dateFrom, dateTo } = req.query
-      const isErrorDate = await repository.isExistDayError(URL_PAGE, dateFrom, dateTo)
+      const isErrorDate = await repository.isExistDayError(brokerAbbrev.MILTON_MARKET, dateFrom, dateTo)
       if (!isErrorDate) {
         await browser.close()
         isFunctionActive = false
@@ -48,24 +40,24 @@ async function crawlDataMiltonMarket(req, res) {
         toDate: dateTo,
       })
     } else {
-      const yesterdayDate = moment().subtract(1, 'days').format('DD-MM-YYYY')
-      const isFirstRunning = await repository.isExistDataOfPage(URL_PAGE)
+      const yesterdayDate = moment().subtract(1, 'days').format(dateFormat.DATE)
+      const isFirstRunning = await repository.notExistDataOfPage(brokerAbbrev.MILTON_MARKET)
       if (isFirstRunning) {
         listDate.push({
-          fromDate: moment(LIMIT_FIRST_DATE, dateFormat.DATE).format('DD-MM-YYYY'),
+          fromDate: moment(MILTON_MARKET_LIMIT_FIRST_DATE, dateFormat.DATE).format(dateFormat.DATE),
           toDate: yesterdayDate,
         })
       } else {
-        listDate = await getListDays(yesterdayDate, yesterdayDate, URL_PAGE)
+        listDate = await getListDays(yesterdayDate, yesterdayDate, brokerAbbrev.MILTON_MARKET)
       }
     }
     const context = await browser.newContext()
     const page = await context.newPage()
     // login to milton prime
-    const isLogin = await login(page, URL_LOGIN, USERNAME, PASSWORD)
+    const isLogin = await login(page, MILTON_MARKET_URL_LOGIN, MILTON_MARKET_USERNAME, MILTON_MARKET_PASSWORD)
     if (!isLogin) {
-      const dateNow = moment(Date.now()).format(dateFormat.DATE)
-      await saveScrapLog(URL_PAGE, dateNow, dateNow, flag.FALSE, scrapLogMessage.reading_file_error)
+      const yesterdayDate = moment().subtract(1, 'days').format(dateFormat.DATE)
+      await saveCrawlLog(brokerAbbrev.MILTON_MARKET, yesterdayDate, yesterdayDate, flag.FALSE, crawlLogMessage.reading_file_error)
       await browser.close()
       isFunctionActive = false
       return
@@ -73,13 +65,9 @@ async function crawlDataMiltonMarket(req, res) {
 
     await page.waitForTimeout(4000)
 
-    // const listDate = [{
-    //   fromDate: '20-05-2001',
-    //   toDate: '20-05-2023',
-    // }]
     for (const obj of listDate) {
       // Crawl data from page
-      await getDataMiltonMarket(page, URL_CRAWL, obj.fromDate, obj.toDate)
+      await getDataMiltonMarket(page, MILTON_MARKET_URL_CRAWL, obj.fromDate, obj.toDate)
     }
 
     await browser.close()
@@ -96,7 +84,8 @@ async function crawlDataMiltonMarket(req, res) {
 async function login(page, urlLogin, username, password) {
   try {
     await page.goto(urlLogin)
-    await page.waitForLoadState('networkidle')
+    await page.waitForLoadState('domcontentloaded')
+
     await page.fill('#form_login__username', username)
     await page.fill('#form_login__password', password)
     await page.click('#form_login_submit')
@@ -107,8 +96,12 @@ async function login(page, urlLogin, username, password) {
 }
 
 async function getDataMiltonMarket(page, urlCrawl, dateFrom, dateTo) {
+  const dateFromPicker = moment(dateFrom).format(dateFormat.DATE_3)
+  const dateToPicker = moment(dateTo).format(dateFormat.DATE_3)
+
   // go to history page
   await page.goto(urlCrawl)
+  await page.waitForLoadState('domcontentloaded')
 
   // click input calendar
   await page.locator('input[type="text"]').nth(1).click()
@@ -129,16 +122,13 @@ async function getDataMiltonMarket(page, urlCrawl, dateFrom, dateTo) {
     elFromDate.setAttribute('id', 'from-date')
     elFromDate.focus()
     setTimeout(() => {
-      document
-        .querySelectorAll('.interval-dropdown')[1]
-        .setAttribute('style', 'display:block')
+      document.querySelectorAll('.interval-dropdown')[1].setAttribute('style', 'display:block')
     }, 50)
   })
-  await page.fill('#from-date', dateFrom)
+  await page.fill('#from-date', dateFromPicker)
   const keyboard = page.keyboard
   await keyboard.press('Space')
   await keyboard.press('Enter')
-
 
   await page.waitForTimeout(2000)
   await page.evaluate(() => {
@@ -148,14 +138,13 @@ async function getDataMiltonMarket(page, urlCrawl, dateFrom, dateTo) {
     elToDate.focus()
   })
 
-  await page.fill('#to-date', dateTo)
+  await page.fill('#to-date', dateToPicker)
   await keyboard.press('Space')
   await keyboard.press('Enter')
 
   // click button "apply filters"
   await page.click('button[class="btn btn-xs bg-olive"]')
   await page.waitForTimeout(4000)
-
 
   // get data in pagination
   const listData = []
@@ -166,44 +155,46 @@ async function getDataMiltonMarket(page, urlCrawl, dateFrom, dateTo) {
     await page.waitForTimeout(4000)
 
     await getDataOnPage(page, listData)
-  }
-  while (! await page.evaluate(()=>{
+  } while (!(await page.evaluate(() => {
     const elNext = document.getElementsByClassName('page-item')
     return elNext[1].classList.contains('disabled')
-  }))
+  })))
 
   // save to db
   if (listData.length === 0) {
-    await saveScrapLog(URL_PAGE, dateFrom, dateTo, flag.TRUE, scrapLogMessage.data_empty)
+    await saveCrawlLog(brokerAbbrev.MILTON_MARKET, dateFrom, dateTo, flag.TRUE, crawlLogMessage.data_empty )
   } else {
-    const isInsertMilton = await repository.insertDataMilTon(listData, dateFrom, dateTo)
-    if (!isInsertMilton) {
-      await saveScrapLog(URL_PAGE, dateFrom, dateTo, flag.FALSE, scrapLogMessage.save_data_error )
+    const isInsertCrawlTransaction = await repository.insertCrawlTransaction(listData, brokerAbbrev.MILTON_MARKET, dateFrom, dateTo)
+    if (!isInsertCrawlTransaction) {
+      await saveCrawlLog(brokerAbbrev.MILTON_MARKET, dateFrom, dateTo, flag.FALSE, crawlLogMessage.save_data_error )
     }
   }
 }
 
 async function getDataOnPage(page, listData) {
-  const elTr = await page.$$( '.table-bordered  tbody tr')
+  const elTr = await page.$$('.table-bordered  tbody tr')
   for (const item of elTr) {
     const td = await item.$$('td')
-    const listTdText = []
-    for ( let i = 0; i < td.length; i++ ) {
+    let listTdText = []
+    for (let i = 0; i < td.length; i++) {
       if (i === 0 || i === 1 || i === 2 || i === 3 || i === 4 || i === 5 || i === 8 || i === 10) {
         const tdText = await td[i].innerText()
         listTdText.push(tdText)
       }
     }
-    listData.push( mapRawDataMilTonToObj(listTdText))
+    listTdText = [...listTdText, metaTradePlatform.MT4, brokerAbbrev.MILTON_MARKET]
+    listData.push(mapRawDataMilTonToObj(listTdText))
   }
   return listData
 }
 
-
 const mapRawDataMilTonToObj = (listData) => {
   const obj = {}
-  const keyValue = ['ticket', 'lots', 'symbol', 'close_date', 'account', 'monetary_commission', 'commission_received', 'rule']
-  keyValue.forEach((key, index)=>{
+  const keyValue = [
+    'order_id', 'volume', 'symbol', 'close_time', 'account', 'account_currency',
+    'reward_per_trade', 'account_type', 'platform', 'broker',
+  ]
+  keyValue.forEach((key, index) => {
     obj[key] = listData[index]
   })
   return obj

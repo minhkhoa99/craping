@@ -1,7 +1,7 @@
 const { chromium } = require('playwright-extra')
 const RecaptchaPlugin = require('puppeteer-extra-plugin-recaptcha')
-const { code, message, flag, resMessage, scrapLogMessage, dateFormat, modeAPI } = require('../constant')
-const { createResponse, saveScrapLog, getListDays } = require('../utils')
+const { code, message, flag, crawlResMessage, crawlLogMessage, dateFormat, modeAPI, brokerAbbrev, metaTradePlatform } = require('../constant')
+const { createResponse, saveCrawlLog, getListDays } = require('../utils')
 const moment = require('moment')
 
 const repository = require('../repository')
@@ -9,10 +9,9 @@ const repository = require('../repository')
 let loginTimeRetry = 1
 const APPLY_FILTER_DATE_INDEX = 8
 let isFunctionActive = false
-const URL_PAGE = 'three_trader'
 
 async function crawlDataThreeTrader(req, res) {
-  chromium.use(
+  chromium .use(
     RecaptchaPlugin({
       provider: {
         id: '2captcha',
@@ -22,7 +21,7 @@ async function crawlDataThreeTrader(req, res) {
     }),
   )
   const browserHeadlessMode = process.env.BROWSER_HEADLESS_MODE === 'true'
-  const browser = await chromium.launch({ headless: browserHeadlessMode })
+  const browser = await chromium .launch({ headless: browserHeadlessMode })
   try {
     // Check if the function is already active
     if (isFunctionActive) {
@@ -31,20 +30,19 @@ async function crawlDataThreeTrader(req, res) {
     isFunctionActive = true
 
     // Respond successfully to customers before data crawl
-    res.status(code.SUCCESS).json({ message: 'succcess' })
-    const { fromDate, toDate } = req.query
+    res.status(code.SUCCESS).json({ message: crawlResMessage.three_trader })
 
-   
     const {
       THREE_TRADER_USERNAME, THREE_TRADER_PASSWORD, THREE_TRADER_URL_LOGIN, THREE_TRADER_URL_CRAWL_REBATE,
       THREE_TRADER_TRADING_ACCOUNTS, THREE_TRADER_URL_CRAWL_ORDER, THREE_TRADER_LIMIT_FIRST_DATE,
     } = process.env
 
     // Get list date
+
     let listDate = []
     if (req.query.mode === modeAPI.MANUAL) {
       const { dateFrom, dateTo } = req.query
-      const isErrorDate = await repository.isExistDayError(URL_PAGE, dateFrom, dateTo)
+      const isErrorDate = await repository.isExistDayError(brokerAbbrev.THREE_TRADER, dateFrom, dateTo)
       if (!isErrorDate) {
         await browser.close()
         isFunctionActive = false
@@ -56,14 +54,14 @@ async function crawlDataThreeTrader(req, res) {
       })
     } else {
       const yesterdayDate = moment().subtract(1, 'days').format(dateFormat.DATE)
-      const isFirstRunning = await repository.isExistDayError(URL_PAGE)
+      const isFirstRunning = await repository.notExistDataOfPage(brokerAbbrev.THREE_TRADER)
       if (isFirstRunning) {
         listDate.push({
           fromDate: THREE_TRADER_LIMIT_FIRST_DATE,
           toDate: yesterdayDate,
         })
       } else {
-        listDate = await getListDays(yesterdayDate, yesterdayDate, URL_PAGE)
+        listDate = await getListDays(yesterdayDate, yesterdayDate, brokerAbbrev.THREE_TRADER)
       }
     }
     // get list trading account
@@ -74,8 +72,8 @@ async function crawlDataThreeTrader(req, res) {
     const page = await context.newPage()
     const isLogin = await login(page, THREE_TRADER_URL_LOGIN, THREE_TRADER_USERNAME, THREE_TRADER_PASSWORD)
     if (!isLogin) {
-      const dateNow = moment(Date.now()).format(dateFormat.DATE)
-      await saveScrapLog(URL_PAGE, dateNow, dateNow, flag.FALSE, scrapLogMessage.login_error)
+      const yesterdayDate = moment().subtract(1, 'days').format(dateFormat.DATE)
+      await saveCrawlLog(brokerAbbrev.THREE_TRADER, yesterdayDate, yesterdayDate, flag.FALSE, crawlLogMessage.login_error)
       await browser.close()
       isFunctionActive = false
       return
@@ -85,16 +83,17 @@ async function crawlDataThreeTrader(req, res) {
     for (const obj of listDate) {
       const listData = []
       for (const tradingAccount of listIdTradingAccount) {
-        const isCrawlDataRebateSuccess = await handleRebatePage(page, tradingAccount, THREE_TRADER_URL_CRAWL_REBATE, obj.fromDate, obj.toDate, listData )
+        const isCrawlDataRebateSuccess = await handleRebatePage(page, tradingAccount, THREE_TRADER_URL_CRAWL_REBATE,
+          obj.fromDate, obj.toDate, listData )
         if (!isCrawlDataRebateSuccess) {
-          await saveScrapLog(URL_PAGE, obj.fromDate, obj.toDate, flag.FALSE, scrapLogMessage.cannot_crawl_data)
+          await saveCrawlLog(brokerAbbrev.THREE_TRADER, obj.fromDate, obj.toDate, flag.FALSE, crawlLogMessage.cannot_crawl_data)
           await browser.close()
           isFunctionActive = false
           return
         }
-        const isCrawlDataOrderSuccess = await handleOrderPage(page, tradingAccount, THREE_TRADER_URL_CRAWL_ORDER, fromDate, toDate, listData)
+        const isCrawlDataOrderSuccess = await handleOrderPage(page, tradingAccount, THREE_TRADER_URL_CRAWL_ORDER, obj.fromDate, obj.toDate, listData)
         if (!isCrawlDataOrderSuccess) {
-          await saveScrapLog(URL_PAGE, obj.fromDate, obj.toDate, flag.FALSE, scrapLogMessage.cannot_crawl_data)
+          await saveCrawlLog(brokerAbbrev.THREE_TRADER, obj.fromDate, obj.toDate, flag.FALSE, crawlLogMessage.cannot_crawl_data)
           await browser.close()
           isFunctionActive = false
           return
@@ -103,11 +102,11 @@ async function crawlDataThreeTrader(req, res) {
 
       // save to db
       if (listData.length === 0) {
-        await saveScrapLog(URL_PAGE, obj.fromDate, obj.toDate, flag.TRUE, scrapLogMessage.data_empty)
+        await saveCrawlLog(brokerAbbrev.THREE_TRADER, obj.fromDate, obj.toDate, flag.TRUE, crawlLogMessage.data_empty)
       } else {
-        const isInsertThreeTrader = await repository.insertDataThreeTrader(listData, obj.fromDate, obj.toDate)
-        if (!isInsertThreeTrader) {
-          await saveScrapLog(URL_PAGE, obj.fromDate, obj.toDate, flag.FALSE, scrapLogMessage.save_data_error )
+        const isInsertCrawlTransaction = await repository.insertCrawlTransaction(listData, brokerAbbrev.THREE_TRADER, obj.fromDate, obj.toDate)
+        if (!isInsertCrawlTransaction) {
+          await saveCrawlLog(brokerAbbrev.THREE_TRADER, obj.fromDate, obj.toDate, flag.FALSE, crawlLogMessage.save_data_error )
         }
       }
     }
@@ -117,7 +116,7 @@ async function crawlDataThreeTrader(req, res) {
     return
   } catch (error) {
     console.error(error)
-    await saveScrapLog(URL_PAGE, req.query.fromDate, req.query.toDate, flag.FALSE, scrapLogMessage.cannot_crawl_data)
+    await saveCrawlLog(brokerAbbrev.THREE_TRADER, req.query.fromDate, req.query.toDate, flag.FALSE, crawlLogMessage.cannot_crawl_data)
     await browser.close()
     isFunctionActive = false
     return
@@ -127,7 +126,7 @@ async function crawlDataThreeTrader(req, res) {
 async function login(page, urlLogin, username, password) {
   try {
     await page.goto(urlLogin)
-    await page.waitForLoadState('networkidle')
+    await page.waitForLoadState('domcontentloaded')
 
     // fill login email and password
     await page.getByLabel('email').fill(username)
@@ -145,8 +144,7 @@ async function login(page, urlLogin, username, password) {
 
     // click login and navigate home page
     await page.click('button:is(:text("LOGIN"))')
-    await page.waitForNavigation()
-    await page.waitForLoadState('networkidle')
+    await page.waitForLoadState('domcontentloaded')
 
     // click change status IB Portal
     await page.click('button:is(:text("IB Portal"))')
@@ -162,7 +160,7 @@ async function handleRebatePage( page, tradingAccount, urlRebate, fromDate, toDa
   try {
     // Move to page RebateReportManagement
     await page.goto(urlRebate)
-    await page.waitForLoadState('networkidle')
+    await page.waitForLoadState('domcontentloaded')
 
     // click to Request History
     await page.getByText('Request History').click()
@@ -215,10 +213,12 @@ async function handleRebatePage( page, tradingAccount, urlRebate, fromDate, toDa
         const dataRebate = columnRebate.slice(5, (columnRebate.length) / 2)
         for (let index = 0; index < dataRebate.length; index++) {
           listData.push({
-            rebate: dataRebate[index],
-            node_name: dataNodeName[index],
-            trading_account: tradingAccount,
-            screen_code: 'rebate',
+            reward_per_period: dataRebate[index].replace(/[^\d.-]/g, ''),
+            account_type: dataNodeName[index],
+            account_currency: dataNodeName[index],
+            account: tradingAccount,
+            broker: brokerAbbrev.THREE_TRADER,
+            platform: metaTradePlatform.MT4,
           })
         }
         await page.waitForTimeout(2000)
@@ -236,12 +236,10 @@ async function handleRebatePage( page, tradingAccount, urlRebate, fromDate, toDa
 // get data order pages
 async function handleOrderPage( page, tradingAccount, urlOrder, fromDate, toDate, listData) {
   // select "Apply Report" in Search Type Element li
-  const liApplyReportIndex = 1
   try {
-    await page.waitForTimeout(2000)
     // moving to page OrderReportManagementPage
     await page.goto(urlOrder)
-    await page.waitForTimeout(3000)
+    await page.waitForLoadState('domcontentloaded')
 
     // fill trading account
     await page.getByRole('textbox').first(5).fill(tradingAccount)
@@ -252,7 +250,7 @@ async function handleOrderPage( page, tradingAccount, urlOrder, fromDate, toDate
     const liElements = await page.$$('li')
 
     // select "Apply Report" in Search Type Element li
-    await liElements[liApplyReportIndex].click()
+    await liElements[1].click()
     await page.waitForTimeout(1000)
     await page.locator('.dark').nth(2).click()
     await page.waitForTimeout(2000)
@@ -266,7 +264,7 @@ async function handleOrderPage( page, tradingAccount, urlOrder, fromDate, toDate
     await keyboard.up('Control')
     await keyboard.press('Delete')
     await page.fill('[placeholder="From"]', `${fromDate} 00:00:00`)
-    await page.waitForLoadState('load')
+    await page.waitForLoadState('domcontentloaded')
 
     // fill to date
     await page.locator('[placeholder="To"]').focus()
@@ -276,29 +274,36 @@ async function handleOrderPage( page, tradingAccount, urlOrder, fromDate, toDate
     await keyboard.press('Delete')
     await page.fill('[placeholder="To"]', `${toDate} 00:00:00`) //
 
-    // fill trading account
-    await page.waitForTimeout(3000)
-    await page.getByRole('textbox').nth(7).fill(tradingAccount)
+    let element = await page.$$('.el-form-item__content')
+    let elementTimeRetry = 1
+    while (elementTimeRetry <= 3 && element === null) {
+      elementTimeRetry++
+      await page.waitForTimeout(3000)
+      element = await page.$$('.el-form-item__content')
+    }
 
     // click button APPLY
-    const element = await page.$$('.el-form-item__content')
     await element[APPLY_FILTER_DATE_INDEX].click()
     await page.waitForTimeout(4000)
 
     // get data require
     const parentElements = await page.$$('.table_content_tbody')
-
     for (const parentElement of parentElements) {
       const childElements = await parentElement.$$('.vxe-body--column')
       const rowContent = []
 
       for (let i = 0; i < childElements.length; i++) {
-        if (i === 0 || i === 2 || i === 4 || i === 5 || i === 6 || i === 7 || i === 12 || i === 15 ) {
+        if (i === 2 || i === 4 || i === 5 || i === 6 || i === 12 ) {
           const textContent = await childElements[i].textContent()
           rowContent.push(textContent)
         }
+        if (i === 0 || i === 7 || i === 15) {
+          const rawTextContent = await childElements[i].textContent()
+          const textContent = rawTextContent.replace(/[^\d.,-]/g, '').trim()
+          rowContent.push(textContent)
+        }
       }
-      rowContent.push('order')
+      rowContent.push(brokerAbbrev.THREE_TRADER, metaTradePlatform.MT4)
       listData.push(mapRawDataToOrderObj(rowContent))
     }
     return true
@@ -310,7 +315,7 @@ async function handleOrderPage( page, tradingAccount, urlOrder, fromDate, toDate
 
 const mapRawDataToOrderObj = (listData) => {
   const obj = {}
-  const keyValue = ['order_id', 'trading_account', 'open_date', 'order_type', 'symbol', 'volume', 'close_date', 'profit', 'screen_code']
+  const keyValue = ['order_id', 'account', 'open_time', 'type', 'symbol', 'volume', 'close_time', 'profit', 'broker', 'platform']
   keyValue.forEach((key, index)=>{
     obj[key] = listData[index]
   })

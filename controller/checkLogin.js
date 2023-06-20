@@ -1,265 +1,268 @@
 const { chromium } = require('playwright')
+const { code, message, dateFormat, flag, crawlResMessage, crawlLogMessage, brokerAbbrev, modeAPI } = require('../constant')
+const { createResponse, saveCrawlLog, getListDays } = require('../utils')
 const moment = require('moment')
+
+const repository = require('../repository')
+
 const querystring = require('querystring')
-async function loginExness(page, url, username, password) {
+
+let isFunctionActive = false
+const NEXT_PAGE_BUTTON_INDEX = 4
+
+async function crawlDataExness(req, res) {
+  const browserHeadlessMode = process.env.BROWSER_HEADLESS_MODE === 'true'
+  const browser = await chromium.launch({ headless: browserHeadlessMode })
   try {
-    await page.goto(url)
-   await page.waitForLoadState("networkidle")
-    
+    // Check if the function is already active
+    if (isFunctionActive) {
+      return createResponse(res, false, null, code.CONFLICT, message.function_active)
+    }
+    isFunctionActive = true
+
+    // Respond successfully to customers before data crawl
+    res.status(code.SUCCESS).json({ message: crawlResMessage.exness })
+
+    const {
+      EXNESS_USERNAME, EXNESS_PASSWORD, EXNESS_URL_LOGIN, EXNESS_URL_CRAWL_REWARDS,
+      EXNESS_URL_CRAWL_ORDER, EXNESS_LIMIT_FIRST_DATE,
+    } = process.env
+
+    // Get list date
+    let listDate = []
+    if (req.query.mode === modeAPI.MANUAL) {
+      const { dateFrom, dateTo } = req.query
+      const isErrorDate = await repository.isExistDayError(brokerAbbrev.EXNESS, dateFrom, dateTo)
+      if (!isErrorDate) {
+        await browser.close()
+        isFunctionActive = false
+        return
+      }
+      listDate.push({
+        fromDate: dateFrom,
+        toDate: dateTo,
+      })
+    } else {
+      const yesterdayDate = moment().subtract(1, 'days').format(dateFormat.DATE)
+      const isFirstRunning = await repository.notExistDataOfPage(brokerAbbrev.EXNESS)
+      if (isFirstRunning) {
+        listDate.push({
+          fromDate: EXNESS_LIMIT_FIRST_DATE,
+          toDate: yesterdayDate,
+        })
+      } else {
+        listDate = await getListDays(yesterdayDate, yesterdayDate, brokerAbbrev.EXNESS)
+      }
+    }
+
+    // login
+    const context = await browser.newContext()
+    const page = await context.newPage()
+    const isLogin = await login(page, EXNESS_URL_LOGIN, EXNESS_USERNAME, EXNESS_PASSWORD)
+    if (!isLogin) {
+      const yesterdayDate = moment().subtract(1, 'days').format(dateFormat.DATE)
+      await saveCrawlLog(brokerAbbrev.EXNESS, yesterdayDate, yesterdayDate, flag.FALSE, crawlLogMessage.login_error)
+      await browser.close()
+      isFunctionActive = false
+      return
+    }
+
+    for (const obj of listDate) {
+      const dateFromPicker = moment(obj.fromDate, dateFormat.DATE).add(1, 'days').format(dateFormat.DATE)
+      const dateToPicker = moment(obj.toDate, dateFormat.DATE).add(1, 'days').format(dateFormat.DATE)
+      const queryParams = {
+        'reward_date_from': dateFromPicker,
+        'reward_date_to': dateToPicker,
+        'sorting[reward_date]': 'DESC',
+        'page': 0,
+        'limit': 5,
+      }
+
+      // Crawl data from page
+      await getDataExness(page, EXNESS_URL_CRAWL_REWARDS, EXNESS_URL_CRAWL_ORDER, queryParams, obj.fromDate, obj.toDate)
+    }
+
+    await browser.close()
+    isFunctionActive = false
+    return
+  } catch (error) {
+    console.log(error)
+    await browser.close()
+    isFunctionActive = false
+    return
+  }
+}
+
+// login
+async function login(page, urlLogin, username, password) {
+  try {
+    await page.goto(urlLogin)
+    await page.waitForLoadState('domcontentloaded')
+
+    await page.click('[data-auto="language_switcher_button"]')
+    await page.click('#language_select_values_en > ._1Fc6m')
 
     await page.fill('input[name = "login"]', username)
     await page.fill('input[name = "password"]', password)
     await page.click('#mui-1')
-    await page.waitForNavigation()
-
-    await page.waitForTimeout(3000)
+    await page.waitForLoadState('domcontentloaded')
+    return true
   } catch (error) {
-    console.log(error)
+    console.error(error)
+    return false
   }
 }
 
 // getData
-async function getDataExness(page, url, res, queryParams) {
+async function getDataExness(page, urlCrawlRewards, urlCrawlOrder, queryParams, fromDate, toDate) {
   try {
-    let listAccountId = []
+    const listData = []
     const queryString = querystring.stringify(queryParams)
-    const urlData = `${url}/?${queryString}`
-    await page.goto(urlData)
- 
-   await page.waitForTimeout(3000)
-  do {
+    const urlReportRewards = `${urlCrawlRewards}/?${queryString}`
+    await page.goto(urlReportRewards)
+    await page.waitForLoadState('domcontentloaded')
 
-    let parentEls = await page.$$('div[data-auto="row"]')
-    
-  for (const child of parentEls) {
-     let pre = await child.$$("pre")
-     let getListId = []
-     for(let index =0 ; index<pre.length;index++) {
-    
-       if(index===0 || index===7 || index ===8) { 
-        const accountId = await pre[index].textContent()
-        getListId.push(accountId)
-       
-       await page.waitForTimeout(3000)
-        }    
-     }
-     listAccountId.push(getListId);
-    
-  }
-  console.log(listAccountId);
-  const el = await page.evaluate(() => {
-    const elements = Array.from(document.getElementsByClassName('pcHFO'));
-    if (elements.length >= 3) {
-      return elements[2].innerText;
-    } else {
-      return null; // Return null if there are less than 3 elements with the class name
-    }
-  });
-  console.log(el);
-  
-  const nextPageButton = (await page.$$('div._28HMx div.pcHFO [target="_self"] svg._31SPq'))[4]
- 
-  await nextPageButton.click()
-  await page.waitForTimeout(3000)
-}while (!await page.evaluate(async ()=>{
-    console.log(13213);
-    const nextButton = document.getElementsByClassName('WlV1S')
-    return nextButton[19].classList.contains('_3cmGt')
-  }))
- 
-//  const getAccountId = listAccountId.map((e)=>{return e[0]})
-
-
- let data =[]
-
-for (let i = 0; i < listAccountId.length; i++) {
-  const dateInitial = moment(listAccountId[i][0], 'DD MMM YYYY').format('YYYY-MM-DD')
-  const initial = `initial_start_day/${dateInitial}/initial_end_day/${dateInitial}/`
-  const date = `date_from=${dateInitial}&date_to=${dateInitial}`
-  await page.goto(`https://my.exnesstrade.pro/reports/orders/${initial}?${date}&client_account=${listAccountId[i][1]}`)
-  await page.waitForTimeout(3000)
-  // something
-
-  const getInstrument = await page.getByText('Instrument').first().textContent()
-  await page.waitForTimeout(2000)
-
-  const getUsd = await page.getByText('USDJPYm').first().textContent()
-  await page.waitForTimeout(2000)
-
-  const divs = await page.$$('div.ke3xz div._2i-_7 div._2WW5r div._3SxZ6')
-
-  for (const div of divs) {
-    const click = await div.$('span._1ZDRI')
-    await click.click()
-    await div.waitForSelector('div._2fam6', { state: 'visible' })
-    await page.waitForTimeout(3000)
-    const result = await div.$eval('div._2pyAa', (element) => element.textContent)
-    await page.waitForTimeout(3000)
-    data.push(result, getInstrument, getUsd, listAccountId[i])
-
-    await page.waitForTimeout(3000)
-  }
-
-  await page.waitForTimeout(3000)
-  
-}
-
-return convertObj(data)
-} catch (error) {
-    console.log(error)
-  }
-}
-// run logic
-async function crawExnesstradePro(event, res) {
-  const browser = await chromium.launch({ headless: false })
-  try {
-    const { fromdate, todate } = event.query
-    const startDate = moment(fromdate, 'YYYY-MM-DD', true);
-    const endDate = moment(todate, 'YYYY-MM-DD', true)
-   
-  
-   
-    const context = await browser.newContext()
-    const page = await context.newPage()
-   const username = 'broker@p2t.sg'
-   const password = 'Px9bvWSB'
-    const urlLogin = 'https://my.exnesstrade.pro/login/?origin=%2Fdashboard%3Flang%3Dja%26action%3Dlogin'
-    const urlCrawl = 'https://my.exnesstrade.pro/reports/rewards'
-    // login
-    await loginExness(page, urlLogin, username, password)
-//getDate
-// const dateData = calculateDateRanges();
-
-    //getData
-
-   
-    // for(const {start,end} of dateData){
-    
-      // console.log(`Crawling data from ${start} to ${end}`);
-      const queryParams = {
-        'reward_date_from': '2007-01-01',
-        'reward_date_to': '2023-06-02',
-        'sorting[reward_date]': 'DESC',
-        'page': 0,
-        'limit': 2,
+    const listAccountInfo = []
+    while (true) {
+      let getParentElementTimeRetry = 1
+      let parentElements = await page.$$('div[data-auto="row"]')
+      while (getParentElementTimeRetry <= 3 && parentElements.length === 0) {
+        getParentElementTimeRetry++
+        await page.waitForTimeout(3000)
+        parentElements = await page.$$('div[data-auto="row"]')
       }
-      const result = await getDataExness(page, urlCrawl,res, queryParams);
-    console.log(result);
-    // }
-    
-    // await getDataExness(page, urlCrawl, res, queryParams)
-  } catch (error) {
-    console.log(error)
-    await browser.close()
-    // return createResponse(res, false, null, code.ERROR, message.server_error )
-  }
-}
-// convert data
-const convertObj = (data)=>{
-  try {
-    const instrumentIndex = data.findIndex((item) => item === 'Instrument');
-    const instrument = data[instrumentIndex + 1];
-    const result = [];
-    let accountInfo = null;
-    let accountType = null;
-    for (let i = 0; i < data.length; i++) {
-      for (let j = i + 1; j < i + 4; j++) {
-        if (
-          Array.isArray(data[j]) &&
-          data[j].length === 3 &&
-          typeof data[j][1] === 'string' &&
-          typeof data[j][2] === 'string'
-        ) {
-          accountInfo = data[j][1];
-          accountType = data[j][2];
-          break;
+
+      for (const child of parentElements) {
+        const accountInfo = {}
+        const preElement = await child.$$('pre')
+        for (let index = 0; index < preElement.length; index++) {
+          switch (index) {
+            case 0:
+              accountInfo.date = await preElement[index].textContent()
+            case 7:
+              const rawAccountId = await preElement[index].textContent()
+              const convertAccountId = rawAccountId.replace(/\D/g, '')
+              accountInfo.accountId = convertAccountId
+            case 8:
+              accountInfo.accountType = await preElement[index].textContent()
+            default:
+              continue
+          }
         }
+        listAccountInfo.push(accountInfo)
       }
-      if (data[i].includes('Order in MT')) {
-        const orderMatch = data[i].match(/Order in MT(\d+)/);
-        const openTimeMatch = data[i].match(/Open time(.+?)Close time/);
-        const closeTimeMatch = data[i].match(/Close time(.+?)Tick History/);
-        const volumeMatch = data[i].match(/Volume(.+?)Lots/);
-        const profitMatch = data[i].match(/Profit(.+)/);
-        const volumeLots = volumeMatch ? volumeMatch[1].trim() + ' ' + 'Lots' : null;
-        const volumeMlnMatch = data[i].match(/Lots(.+?)Mln\. USD/);
-        const volumeMln = volumeMlnMatch ? volumeMlnMatch[1].trim() + ' ' + 'Mln. USD' : null;
-  
-        const obj = {
-          'account_id': accountInfo,
-          'account_type': accountType,
-          'order_in_mt': orderMatch ? orderMatch[1] : null,
-          'profit': profitMatch ? profitMatch[1].trim() : null,
-          'instrument': instrument,
-          'open_date': openTimeMatch ? moment(openTimeMatch[1].trim(), "DD MMM YYYYHH:mm:ss").format('DD-MMM-YYYY HH:mm:ss') : null,
-          'close_date': closeTimeMatch ? moment(closeTimeMatch[1].trim(), "DD MMM YYYYHH:mm:ss").format('DD-MMM-YYYY HH:mm:ss') : null,
-          'volume_lots': volumeLots,
-          'volume_mln_usd': volumeMln,
-        };
-  
-        result.push(obj)
+      // Check has pagination
+      const countPaginationDiv = await page.locator('.pcHFO').count()
+      if (countPaginationDiv < 2) {
+        break
+      }
+
+      // Check is last page
+      const isLastPage = await page.evaluate(async ()=>{
+        const LIMIT_NEXT_PAGE_INDEX = 19
+        const nextButton = document.getElementsByClassName('WlV1S')
+        return nextButton[LIMIT_NEXT_PAGE_INDEX].classList.contains('_3cmGt')
+      })
+      if (isLastPage) {
+        break
+      }
+      const nextPageButton = (await page.$$('div._28HMx div.pcHFO [target="_self"] svg._31SPq'))[NEXT_PAGE_BUTTON_INDEX]
+      await nextPageButton.click()
+      await page.waitForTimeout(4000)
+    }
+
+    for (const accountInfo of listAccountInfo) {
+      // Custom report orders url from account info
+      const initialDate = moment(accountInfo.date, dateFormat.DATE_2).format(dateFormat.DATE)
+      const initialDatePath = `initial_start_day/${initialDate}/initial_end_day/${initialDate}/`
+      const dateFilter = `date_from=${initialDate}&date_to=${initialDate}`
+      const urlReportOrders = `${urlCrawlOrder}/${initialDatePath}?${dateFilter}&client_account=${accountInfo.accountId}`
+      await page.goto(urlReportOrders)
+      await page.waitForLoadState('domcontentloaded')
+
+      while (true) {
+        let getElementTimeRetry = 1
+        let listDetailElements = await page.$$('div.ke3xz div._2i-_7 div._2WW5r div._3SxZ6')
+        while (getElementTimeRetry <= 3 && listDetailElements.length === 0) {
+          getElementTimeRetry++
+          await page.waitForTimeout(3000)
+          listDetailElements = await page.$$('div.ke3xz div._2i-_7 div._2WW5r div._3SxZ6')
+        }
+
+        for (const detailElement of listDetailElements) {
+          const transactionObj = {
+            broker: brokerAbbrev.EXNESS,
+            account: accountInfo.accountId,
+            account_type: accountInfo.accountType,
+          }
+          const getUsd = await page.locator('._1F2B0 pre').nth(2).textContent()
+          transactionObj.symbol = getUsd
+
+          const click = await detailElement.$('span._1ZDRI')
+          await click.click()
+          await detailElement.waitForSelector('div._2fam6', { state: 'visible' })
+          await page.waitForTimeout(3000)
+          const result = await detailElement.$eval('div._2pyAa', (element) => element.textContent)
+
+          convertStringToObj(result, transactionObj)
+          listData.push(transactionObj)
+        }
+
+        const countPaginationDiv = await page.locator('.pcHFO').count()
+        if (countPaginationDiv < 2) {
+          break
+        }
+
+        const isLastPage = await page.evaluate(async ()=>{
+          const LIMIT_NEXT_PAGE_INDEX = 19
+          const nextButton = document.getElementsByClassName('WlV1S')
+          return nextButton[LIMIT_NEXT_PAGE_INDEX].classList.contains('_3cmGt')
+        })
+        if (isLastPage) {
+          break
+        }
+        const nextPageButton = (await page.$$('div._28HMx div.pcHFO [target="_self"] svg._31SPq'))[NEXT_PAGE_BUTTON_INDEX]
+        await nextPageButton.click()
+        await page.waitForTimeout(4000)
       }
     }
-  return result
+
+    // save to db
+    if (listData.length === 0) {
+      await saveCrawlLog(brokerAbbrev.EXNESS, fromDate, toDate, flag.TRUE, crawlLogMessage.data_empty)
+    } else {
+      const isInsertCrawlTransaction = await repository.insertCrawlTransaction(listData, brokerAbbrev.EXNESS, fromDate, toDate)
+      if (!isInsertCrawlTransaction) {
+        await saveCrawlLog(brokerAbbrev.EXNESS, fromDate, toDate, flag.FALSE, crawlLogMessage.save_data_error )
+      }
+    }
+    return
   } catch (error) {
     console.log(error)
+    await saveCrawlLog(brokerAbbrev.EXNESS, fromDate, toDate, flag.FALSE, crawlLogMessage.cannot_crawl_data)
+    return
   }
 }
 
-module.exports = {
-  crawExnesstradePro,
-  loginExness,
+// convert data
+function convertStringToObj(data, transactionObj) {
+  try {
+    const orderMatch = data.match(/Order in MT(\d+)/)
+    const openTimeMatch = data.match(/Open time(.+?)Close time/)
+    const closeTimeMatch = data.match(/Close time(.+?)Tick History/)
+    const volumeMatch = data.match(/Volume(.+?)Lots/)
+    const profitMatch = data.match(/Profit(.+)/)
+    const volume = volumeMatch ? volumeMatch[1].trim() : null
+
+    transactionObj.deal_id = orderMatch ? orderMatch[1].replace(/\D/g, '').trim() : null
+    transactionObj.reward_per_trade = profitMatch ? profitMatch[1].replace(/[^\d.-]/g, '').trim() : null
+    transactionObj.open_time = openTimeMatch ? moment(openTimeMatch[1].trim(), dateFormat.DATE_TIME_3).format(dateFormat.DATE_TIME) : null
+    transactionObj.close_time = closeTimeMatch ? moment(closeTimeMatch[1].trim(), dateFormat.DATE_TIME_3).format(dateFormat.DATE_TIME) : null
+    transactionObj.volume = volume
+  } catch (error) {
+    console.error(error)
+  }
 }
-
-// const getDate = (startDate,endDate)=>{
-//    // Thay đổi ngày kết thúc để kiểm tra
-
-//    const diffDays = endDate.diff(startDate, 'days');
-//    const dateRanges = [];
- 
-//    if (diffDays >= 0 && diffDays <= 3 || (diffDays > 3 && diffDays < 7)) {
-//      dateRanges.push({ start: startDate.format('YYYY-MM-DD'), end: endDate.format('YYYY-MM-DD') });
-//    } else if (diffDays >= 7) {
-//      const totalWeeks = Math.ceil(diffDays / 7);
- 
-//      let currentStartDate = moment(startDate);
-//      let currentEndDate = moment(startDate).add(6, 'days');
- 
-//      for (let i = 0; i < totalWeeks; i++) {
-//        if (currentEndDate.isAfter(endDate)) {
-//          currentEndDate = moment(endDate);
-//        }
- 
-//        dateRanges.push({ start: currentStartDate.format('YYYY-MM-DD'), end: currentEndDate.format('YYYY-MM-DD') });
- 
-//        currentStartDate = moment(currentEndDate).add(1, 'day');
-//        currentEndDate = moment(currentStartDate).add(6, 'days');
-//      }
-//    } else if (diffDays < 0) {
-//      console.log('error');
-//    }
- 
-//    return dateRanges;
-  
-// }
-// function calculateDateRanges() {
-//   const today = moment().subtract(1, 'day'); // return 1 day with today
-//   const finalEndDate = moment("2023-01-01");
-//   const queryParamsList = [];
-//   let endDate = moment(today);
-
-//   while (endDate.diff(finalEndDate, 'days') >= 0) { // check endDate
-//     const startDate = moment(endDate).subtract(6, 'days'); //last week
-
-//     queryParamsList.push({
-//       start: moment.max(startDate, finalEndDate).format("YYYY-MM-DD"), // select max days after startDate and finalEndDate
-//       end: endDate.format("YYYY-MM-DD")
-//     });
-
-    
-
-//     endDate = moment(startDate).subtract(1, 'day'); // return 1 day create new endDate
-//   }
-
-//   return queryParamsList;
-// }
+module.exports = {
+  crawlDataExness,
+}

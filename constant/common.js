@@ -41,7 +41,7 @@ const resCheck = Object.freeze({
   OK: 'OK',
 })
 
-const crawlLogMessage = Object.freeze({
+const scrapLogMessage = Object.freeze({
   crawl_success: 'Crawl success',
   login_error: 'Login error',
   data_empty: 'Crawl success and data empty',
@@ -69,19 +69,29 @@ const brokerAbbrev = Object.freeze({
 })
 
 const metaTradePlatform = Object.freeze({
-  MT4: 'MT4',
-  MT5: 'MT5',
+  MT4: '4',
+  MT5: '5',
 })
-
+const orderType = Object.freeze({
+  BUY: 0,
+  SELL: 1,
+  BUYLIMIT: 2,
+  SELLLIMIT: 3,
+  BUYSTOP: 4,
+  SELLSTOP: 5,
+  BALANCE: 6,
+  CREDIT: 7,
+})
 module.exports = {
   code,
   message,
   flag,
   dateFormat,
   resCheck,
-  crawlLogMessage,
+  scrapLogMessage,
   crawlResMessage,
   modeAPI,
   brokerAbbrev,
   metaTradePlatform,
+  orderType
 }
