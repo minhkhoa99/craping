@@ -13,6 +13,7 @@
     "axios": "^1.4.0",
     "body-parser": "^1.20.2",
     "cheerio": "^1.0.0-rc.12",
+    "cloudflare-scraper": "^2.0.0",
     "cors": "^2.8.5",
     "date-fns": "^2.30.0",
     "dotenv": "^16.0.3",
@@ -23,10 +24,14 @@
     "moment": "^2.29.4",
     "morgan": "^1.10.0",
     "mysql2": "^3.3.3",
+    "node-fetch": "^2.6.11",
     "nodemon": "^2.0.22",
-    "playwright": "^1.33.0",
+    "playwright": "^1.35.1",
     "playwright-extra": "^4.3.6",
+    "puppeteer": "^20.7.3",
+    "puppeteer-extra": "^3.3.6",
     "puppeteer-extra-plugin-recaptcha": "^3.6.8",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
     "selenium-webdriver": "^4.9.2"
   }
 }
