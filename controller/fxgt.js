@@ -19,8 +19,6 @@ const crawlDataFxgt = async (req, res) =>{
     // Respond successfully to customers before data crawl
     res.status(code.SUCCESS).json({ message: crawlResMessage.fxgt })
 
-    // query
-    // const { dateFrom, dateTo } = req.query
     const { FXGT_USERNAME, FXGT_PASSWORD, FXGT_URL_LOGIN, FXGT_URL_CRAWL, FXGT_LIMIT_FIRST_DATE } = process.env
 
     // Get list date
@@ -42,7 +40,7 @@ const crawlDataFxgt = async (req, res) =>{
       const isFirstRunning = await repository.notExistDataOfPage(brokerAbbrev.FXGT)
       if (isFirstRunning) {
         listDate.push({
-          fromDate: moment(FXGT_LIMIT_FIRST_DATE, dateFormat.DATE_2).format(dateFormat.DATE_2),
+          fromDate: moment(FXGT_LIMIT_FIRST_DATE, dateFormat.DATE).format(dateFormat.DATE_2),
           toDate: yesterdayDate,
         })
       } else {
