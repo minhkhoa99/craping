@@ -9,6 +9,6 @@ router.get('/check',checkLogin.crawlDataExness)
 router.post('/api-test-save', saveData.saveData)
 router.get('/three',three.crawlDataThreeTrader)
 router.get('/cashback',cashback.crawlCashback)
-router.get('/fxgt', fxgt.crawlFxgt)
+router.get('/fxgt', fxgt.crawlDataFxgt)
 
 module.exports = router
