@@ -1,14 +1,15 @@
 const { firefox } = require('playwright')
-const { code, message, dateFormat, flag, crawlResMessage, crawlLogMessage, modeAPI, brokerAbbrev } = require('../constant')
-const { createResponse, saveCrawlLog, getListDays } = require('../utils')
+const { code, message, dateFormat, flag, crawlResMessage, crawlLogMessage, brokerAbbrev } = require('../constant')
+const { createResponse, saveCrawlLog, getCrawlTime } = require('../utils')
 const moment = require('moment')
+const pidusage = require('pidusage');
+const {createPool} = require('generic-pool')
 const repository = require('../repository')
 
 let isFunctionActive = false
 
 const crawlDataFxgt = async (req, res) =>{
-  const browserHeadlessMode = process.env.BROWSER_HEADLESS_MODE === 'true'
-  const browser = await firefox.launch({ headless: browserHeadlessMode })
+  let browser
   try {
     // Check if the function is already active
     if (isFunctionActive) {
@@ -19,84 +20,112 @@ const crawlDataFxgt = async (req, res) =>{
     // Respond successfully to customers before data crawl
     res.status(code.SUCCESS).json({ message: crawlResMessage.fxgt })
 
-    const { FXGT_USERNAME, FXGT_PASSWORD, FXGT_URL_LOGIN, FXGT_URL_CRAWL, FXGT_LIMIT_FIRST_DATE } = process.env
+    const { BROWSER_HEADLESS_MODE, FXGT_USERNAME, FXGT_PASSWORD, FXGT_URL_LOGIN, FXGT_URL_CRAWL, FXGT_LIMIT_FIRST_DATE } = process.env
 
     // Get list date
-    let listDate = []
-    if (req.query.mode === modeAPI.MANUAL) {
-      const { dateFrom, dateTo } = req.query
-      const isErrorDate = await repository.isExistDayError(brokerAbbrev.FXGT, dateFrom, dateTo)
-      if (!isErrorDate) {
-        await browser.close()
-        isFunctionActive = false
-        return
-      }
-      listDate.push({
-        fromDate: dateFrom,
-        toDate: dateTo,
-      })
-    } else {
-      const yesterdayDate = moment().subtract(1, 'days').format(dateFormat.DATE_2)
-      const isFirstRunning = await repository.notExistDataOfPage(brokerAbbrev.FXGT)
-      if (isFirstRunning) {
-        listDate.push({
-          fromDate: moment(FXGT_LIMIT_FIRST_DATE, dateFormat.DATE).format(dateFormat.DATE_2),
-          toDate: yesterdayDate,
-        })
-      } else {
-        listDate = await getListDays(yesterdayDate, yesterdayDate, brokerAbbrev.FXGT)
-      }
-    }
+    // const crawlTime = await getCrawlTime(brokerAbbrev.FXGT, FXGT_LIMIT_FIRST_DATE)
+    // if (!crawlTime) {
+    //   isFunctionActive = false
+    //   return
+    // }
+
+
+    // init browser
+    const browserHeadlessMode = BROWSER_HEADLESS_MODE === 'true'
+    browser = await firefox.launch({ headless: browserHeadlessMode, args: [
+      '--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-accelerated-2d-canvas',
+      '--no-first-run', '--no-zygote', '--disable-gpu',
+    ] })
+
     const context = await browser.newContext()
-    // pass clouldfare
+    
+    // pass cloud fare
     await context.addInitScript(() => {
       delete navigator.__proto__.webdriver
     })
+    const maxContextr = 5
+    const pool = await createPool(browser,{
+      browser: browser,
+      contextOptions: context,
+      max:maxContextr,
+    })
 
-    const page = await context.newPage()
+    const browserPool = await pool.acquire()
+    const page = await browserPool.newPage()
+
+    pidusage(process.pid, (err, stat) => {
+      if (err) {
+        console.error('Lỗi khi lấy thông tin sử dụng tài nguyên:', err);
+        return;
+      }
+    
+      setInterval(() => {
+        pidusage(process.pid, (err, stat) => {
+          if (err) {
+            console.error('Lỗi khi lấy thông tin sử dụng tài nguyên:', err);
+            return;
+          }
+    
+          console.log('CPU usage:', stat.cpu);
+          console.log('Memory usage:', stat.memory);
+        });
+      }, 1000);
+    });
+
     // login
-    const isLogin = await login(page, FXGT_URL_LOGIN, FXGT_USERNAME, FXGT_PASSWORD)
-
+    const isLogin = await _login(page, FXGT_URL_LOGIN, FXGT_USERNAME, FXGT_PASSWORD)
     if (!isLogin) {
-      const yesterdayDate = moment().subtract(1, 'days').format(dateFormat.DATE)
-      await saveCrawlLog(brokerAbbrev.FXGT, yesterdayDate, yesterdayDate, flag.FALSE, crawlLogMessage.reading_file_error)
+      // await saveCrawlLog(brokerAbbrev.FXGT, fromDate, toDate, flag.FALSE, crawlLogMessage.login_error)
       await browser.close()
+      await pool.close()
       isFunctionActive = false
       return
     }
+    const { fromDate, toDate } = req.query
 
-    await page.waitForTimeout(4000)
-
-    // get data
-    for (const obj of listDate) {
-      await getDataFxgt(page, FXGT_URL_CRAWL, obj.fromDate, obj.toDate)
+    const listData = await _getDataFxgt(page, FXGT_URL_CRAWL, fromDate, toDate)
+    if (!listData) {
+    //   await saveCrawlLog(brokerAbbrev.FXGT, fromDate, toDate, flag.FALSE, crawlLogMessage.cannot_crawl_data)
+      isFunctionActive = false
+      browser.close()
+      // await browserPool.close()
+      return
     }
 
+    if (listData.length === 0) {
+      // await saveCrawlLog(brokerAbbrev.FXGT, fromDate, toDate, flag.TRUE, crawlLogMessage.data_empty)
+      isFunctionActive = false
+      browser.close()
+      // await browserPool.close()
+      return
+    }
+
+    
+
     await browser.close()
+    // await browserPool.close()
     isFunctionActive = false
     return
   } catch (error) {
     console.log(error)
-    await browser.close()
+    if (browser) {
+      await browser.close()
+    }
     isFunctionActive = false
-    return
   }
 }
 
-const login = async (page, FXGT_URL_LOGIN, FXGT_USERNAME, FXGT_PASSWORD)=>{
+const _login = async (page, FXGT_URL_LOGIN, FXGT_USERNAME, FXGT_PASSWORD)=>{
   try {
     await page.goto(FXGT_URL_LOGIN)
-    await page.waitForTimeout(3000)
+    await page.waitForTimeout(4000)
 
     await page.fill('#email', FXGT_USERNAME)
     await page.fill('#password', FXGT_PASSWORD)
+    await page.waitForTimeout(2000)
 
-    // await setAgents(page)
-    await page.waitForTimeout(3000)
     await page.click('#btn_login')
-
-    await page.waitForTimeout(3000)
-
+    await page.waitForSelector('#ib-portal')
 
     return true
   } catch (error) {
@@ -105,56 +134,98 @@ const login = async (page, FXGT_URL_LOGIN, FXGT_USERNAME, FXGT_PASSWORD)=>{
   }
 }
 
-const getDataFxgt = async (page, FXGT_URL_CRAWL, dateFrom, dateTo)=>{
+const _getDataFxgt = async (page, urlCrawl, dateFrom, dateTo)=>{
   try {
-    await page.waitForTimeout(3000)
 
-    await page.goto(FXGT_URL_CRAWL)
+    // get data
+    // const dateFromPicker = moment(dateFrom, dateFormat.DATE_TIME).format(dateFormat.DATE_2)
+    // const dateToPicker = moment(dateTo, dateFormat.DATE_TIME).format(dateFormat.DATE_2)
+
     await page.waitForTimeout(3000)
+    // await page.locator('.dropdown-toggle').nth(2).click()
+    // await page.locator('[data-url="locale/en"]').nth(1).click()
+    await page.waitForLoadState('domcontentloaded')
+
+    await page.goto(urlCrawl)
+    await page.waitForLoadState('domcontentloaded')
+    await page.waitForTimeout(2000)
+
     // get date
     await page.locator('.custom-radio').nth(7).click()
+    await page.waitForLoadState('domcontentloaded')
+    await page.waitForTimeout(1000)
 
     await page.fill('#startDateFilter', dateFrom)
-
     await page.fill('#endDateFilter', dateTo)
-
-
     await page.click('#reportFilterGo')
     await page.waitForLoadState('domcontentloaded')
 
     await page.selectOption('select[name="reportDataTable_length"]', '5000')
-
     await page.waitForLoadState('domcontentloaded')
 
+    const listData = []
     while (true) {
       const elements = await page.$$('#reportDataTable tbody tr')
-      await page.waitForLoadState('domcontentloaded')
-
       for (const item of elements) {
         const listText = []
-
+        const transactionObj = {
+          broker: brokerAbbrev.FXGT,
+        }
         const tds = await item.$$('td')
         for (let i = 0; i < tds.length; i++) {
-          if ( i === 0 || i === 1 || i === 2 || i === 4 || i === 7 || i === 8 || i === 10 || i === 13) {
+          if ( [0, 2, 7, 8, 10, 13].includes(i)) {
             const tdText = await tds[i].textContent()
             listText.push(tdText)
           }
+          if (i === 1) {
+            const tdText = await tds[i].textContent()
+            const regex = /MT(\d+)\s*-\s*(\w+)-Live/
+            const matches = tdText.match(regex)
+            if (matches) {
+              const metaNumber = matches[1]
+              listText.push(metaNumber)
+            }
+          }
+          if (i === 4) {
+            const tdText = await tds[i].textContent()
+            // const closeTime = moment(tdText, dateFormat.DATE_TIME_4).format(dateFormat.DATE_TIME)
+            listText.push(tdText)
+          }
         }
-        console.log(listText)
+        if (listText.length > 0) {
+          _convertDataToObj(listText, transactionObj)
+          listData.push(transactionObj)
+        }
       }
       const nextButton = await page.$('li.next')
       const isNextButton = await nextButton.evaluate((btn) => !btn.classList.contains('disabled'))
       if (!isNextButton) {
         break
       }
+
+      await page.waitForTimeout(3000)
       await page.waitForSelector('#reportDataTable_next', { visible: true, timeout: 30000 })
       await page.click('#reportDataTable_next')
 
       await page.waitForLoadState('domcontentloaded')
     }
+    
+    return listData
   } catch (error) {
     console.log(error)
+    return false
   }
+}
+
+const _convertDataToObj = (listData, obj) => {
+  const keyValue = [
+    'deal_id', 'platform', 'account', 'close_time', 'symbol', 'account_type',
+    'volume', 'reward_per_trade',
+  ]
+  keyValue.forEach((key, index) => {
+    obj[key] = listData[index]
+  })
+  return obj
 }
 module.exports = {
   crawlDataFxgt,

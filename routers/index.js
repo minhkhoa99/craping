@@ -1,0 +1,16 @@
+const crawlMiltonMarketRouter = require('./crawlMiltonMarket')
+const crawlThreeTraderRouter = require('./crawlThreeTrader')
+const crawlExnessRouter = require('./crawlExness')
+const crawlCashbackRouter = require('./crawlCashback')
+const crawlGenerateTradeRouter = require('./crawlGenerateTrade')
+const crawlFxgtRouter = require('./crawlFxgt')
+const symbolInfo = require('./symbolInfo.Routes')
+module.exports = (app)=> {
+  app.use('/crawl', crawlMiltonMarketRouter)
+  app.use('/crawl', crawlThreeTraderRouter)
+  app.use('/crawl', crawlExnessRouter)
+  app.use('/crawl', crawlFxgtRouter)
+  app.use('/api', crawlCashbackRouter)
+  app.use('/api', symbolInfo)
+  app.use('/crawl', crawlGenerateTradeRouter)
+}

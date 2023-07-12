@@ -41,15 +41,14 @@ async function insertCrawlTransaction(transactionObj, page, dateFrom, dateTo) {
 const insertCrawlCashback = async (data)=>{
   try {
     return await db.transaction(async (trx)=>{
-      const existingOrderIds = await db('crawl_transaction').pluck('order_id');
-      const filteredData = data.filter((item) => !existingOrderIds.includes(item.order_id));
-      if (filteredData.length > 0) {
-      const isInsertedCrawlCashback = await trx('crawl_transaction').insert(filteredData)
+    
+      
+      const isInsertedCrawlCashback = await trx('crawl_transaction').insert(data)
       if (!isInsertedCrawlCashback) {
         await trx.rollback()
         return false
       }
-    }
+    
       return true
     })
   } catch (error) {

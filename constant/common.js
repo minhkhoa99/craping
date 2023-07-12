@@ -41,7 +41,7 @@ const resCheck = Object.freeze({
   OK: 'OK',
 })
 
-const scrapLogMessage = Object.freeze({
+const crawlLogMessage = Object.freeze({
   crawl_success: 'Crawl success',
   login_error: 'Login error',
   data_empty: 'Crawl success and data empty',
@@ -88,7 +88,7 @@ module.exports = {
   flag,
   dateFormat,
   resCheck,
-  scrapLogMessage,
+  crawlLogMessage,
   crawlResMessage,
   modeAPI,
   brokerAbbrev,

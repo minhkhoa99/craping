@@ -14,7 +14,7 @@ async function insertCrawlLog(obj) {
 
 const getListDayError = async (pageName)=>{
   try {
-    return await db('crawl_log2')
+    return await db('crawl_log')
       .orderBy('id', 'desc')
       .where({ broker: pageName, result: 0 })
       .select('date_from', 'date_to')
@@ -26,7 +26,7 @@ const getListDayError = async (pageName)=>{
 
 const isExistDayError = async (broker, dateFrom, dateTo) => {
   try {
-    const result = await db('crawl_log2').where({
+    const result = await db('crawl_log').where({
       broker: broker,
       date_from: dateFrom,
       date_to: dateTo,
@@ -41,7 +41,7 @@ const isExistDayError = async (broker, dateFrom, dateTo) => {
 const updateCrawlLog = async (obj) => {
   try {
     return await db.transaction(async (trx) => {
-      await trx('crawl_log2')
+      await trx('crawl_log')
         .where({
           broker: obj.broker,
           date_from: obj.date_from,
@@ -56,7 +56,7 @@ const updateCrawlLog = async (obj) => {
 
 const notExistDataOfPage = async (pageName) => {
   try {
-    const result = await db('crawl_log2').where({
+    const result = await db('crawl_log').where({
       broker: pageName,
     }).count('id as rowCount')
     return result[0].rowCount === 0
@@ -65,11 +65,22 @@ const notExistDataOfPage = async (pageName) => {
     return
   }
 }
-
+const getLastCrawlTime = async (broker)=>{
+  try {
+    return await db('crawl_log')
+      .orderBy('id', 'desc')
+      .where({ broker: broker })
+      .select('*').limit(1)
+  } catch (error) {
+    console.error(error)
+    return false
+  }
+}
 module.exports = {
   insertCrawlLog,
   isExistDayError,
   updateCrawlLog,
   getListDayError,
   notExistDataOfPage,
+  getLastCrawlTime
 }

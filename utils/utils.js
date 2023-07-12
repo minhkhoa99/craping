@@ -89,10 +89,32 @@ const getListDays = async (dateFrom, dateTo, pageName) => {
     return null
   }
 }
+const getCrawlTime = async (broker, firstTime) => {
+  try {
+    const lastCrawlTime = await repository.getLastCrawlTime(broker)
+    if (!lastCrawlTime) {
+      return false
+    }
 
+    const currentTime = moment().format(dateFormat.DATE_TIME)
+    if (lastCrawlTime.length === 0) {
+      return { fromDate: firstTime, toDate: currentTime }
+    }
+
+    const fromDate = lastCrawlTime[0].result === 0 ?
+      moment(lastCrawlTime[0].date_from).format(dateFormat.DATE_TIME) :
+      moment(lastCrawlTime[0].date_to).format(dateFormat.DATE_TIME)
+
+    return { fromDate, toDate: currentTime }
+  } catch (error) {
+    console.log(error)
+    return false
+  }
+}
 module.exports = {
   getUserIdByToken,
   createResponse,
   saveCrawlLog,
   getListDays,
+  getCrawlTime
 }
