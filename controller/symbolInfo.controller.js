@@ -3,6 +3,7 @@ const repository = require('../repository')
 const { createResponse } = require('../utils')
 const symbolInfo = async (req, res)=>{
   try {
+    let isSaveDataSuccess
     // const jsonString = JSON.stringify(req.body).substring(2).replace(/\\|u0000":""}/g, '')
     // const json = JSON.parse(jsonString)
 
@@ -11,7 +12,10 @@ const symbolInfo = async (req, res)=>{
     // // convert array
     // const uniqueData = Array.from(uniqueSet).map(JSON.parse)
     const data = req.body
-    const isSaveDataSuccess = await repository.inserted(data)
+   for(const record of data){
+    isSaveDataSuccess = await repository.inserted(record)
+    console.log(record);
+   }
 
     if (!isSaveDataSuccess) {
       return await createResponse(res, false, null, code.BAD_REQUEST, crawlLogMessage.save_data_error)

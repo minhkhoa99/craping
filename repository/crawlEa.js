@@ -1,26 +1,39 @@
-const db = require('../services/db.service')
+const db = require("../services/db.service");
 
-const inserted = async(data)=>{
-    try {
-        return await db.transaction(async (trx)=>{
-          const isInsertedCrawlCashback = await trx('symbol_info').insert(data)
-          .onConflict(['broker', 'kind', 'symbol']).merge().then(async()=>{
-            const insertedId = await trx('symbol_info').select('id').where({ broker: data.broker, kind: data.kind, symbol: data.symbol }).first();
-            console.log(insertedId);
-    // Cập nhật lại id trong đối tượng data
-    data.id = insertedId.id;
-          })
-          if (!isInsertedCrawlCashback) {
-            await trx.rollback()
-            return false
-          }
-          return true
+const inserted = async (data) => {
+  try {
+    return await db.transaction(async (trx) => {
+      //check isExisting
+      const isExistingRecord = await db("symbol_info")
+        .select("id")
+        .where({
+          'broker': data.broker,
+          kind: data.kind,
+          symbol: data.symbol,
         })
-      } catch (error) {
-        console.log(error)
-        return false
+        .first();
+
+      let isInserted;
+      if (isExistingRecord) {
+        isInserted = await trx("symbol_info")
+          .where("id", isExistingRecord.id)
+          .update(data);
       }
-}
-module.exports ={
-    inserted,
-}
+       else {
+        isInserted = await trx("symbol_info").insert(data);
+      }
+      
+      if (!isInserted) {
+        await trx.rollback();
+        return false;
+      }
+      return true;
+    });
+  } catch (error) {
+    console.log(error);
+    return false;
+  }
+};
+module.exports = {
+  inserted,
+};

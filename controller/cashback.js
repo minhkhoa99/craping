@@ -24,8 +24,12 @@ const crawlCashback = async (req, res)=>{
 }
 const crawlEA = async (req,res)=>{
   try{
+  let isSaveDataSuccess
   const data = req.body
-const isSaveDataSuccess = await repository.inserted(data)
+  for(const record of data){
+    isSaveDataSuccess = await repository.inserted(record)
+  
+   }
 if(!isSaveDataSuccess){
   return await createResponse(res, false, null, code.BAD_REQUEST, crawlLogMessage.save_data_error)
 }
