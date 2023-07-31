@@ -66,7 +66,8 @@ const brokerAbbrev = Object.freeze({
   EXNESS: 'EXN',
   MILTON_MARKET: 'MIL',
   THREE_TRADER: 'THT',
-  IS6_COM: 'IS6'
+  IS6_COM: 'IS6',
+  LANDFX:'LFX'
 })
 
 const metaTradePlatform = Object.freeze({

@@ -94,7 +94,7 @@ const getCrawlTime = async (broker, firstTime) => {
     const lastCrawlTime = [{
     broker: broker,
     date_from: '2022-12-31T17:00:00.000Z',
-    date_to: '2022-03-26T03:00:25.000Z',
+    date_to: '2022-07-26T03:00:25.000Z',
     }]
     
     if (!lastCrawlTime) {

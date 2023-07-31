@@ -29,8 +29,7 @@ const crawlIs6com = async()=>{
         const isLogin = await _login(page, IS6COM_URL_LOGIN, IS6COM_USERNAME, IS6COM_PASSWORD)
 
         for(const {year, month} of listYearMonth){
-          console.log(year);
-          console.log(month);
+        
           const isGetData = await _getData(page,IS6COM_URL_CRAWL, year, month)
 
         }
@@ -84,16 +83,26 @@ for(const item of elements){
   }
   const tds = await item.$$('td')
   for(let i=0;i<tds.length;i++){
+   if([1,2,3,4,5,6,7,8].includes(i)){
     const tdText = await tds[i].textContent()
-    console.log(tdText);
+console.log(tdText);
+   }
   }
 }
 
-const nextButton = await page.$$('li.paginationjs-next')
+const nextButton = await page.$('li.paginationjs-next')
+if (!nextButton) {
+  break; 
+}
 const isNextButton = await nextButton.evaluate((btn) => !btn.classList.contains('disabled'))
       if (!isNextButton) {
         break
       }
+
+  await nextButton.click()    
+
+  await page.waitForLoadState('#data-container')
+
   }
 
 }
