@@ -1,5 +1,5 @@
-const { firefox } = require('playwright')
-const { code, message, dateFormat, flag, crawlResMessage, crawlLogMessage, brokerAbbrev } = require('../constant')
+const { chromium } = require('playwright')
+const { code, message, dateFormat, flag, crawlResMessage, crawlLogMessage, brokerAbbrev,metaTradePlatform } = require('../constant')
 const { createResponse, saveCrawlLog, getCrawlTime } = require('../utils')
 const moment = require('moment')
 const pidusage = require('pidusage');
@@ -18,7 +18,7 @@ const crawlLandFx = async()=>{
         const {fromDate, toDate } = lastCrawlTime
         
         const browserHeadlessMode = BROWSER_HEADLESS_MODE === 'true'
-        browser = await firefox.launch({ headless: browserHeadlessMode, args: [
+        browser = await chromium.launch({ headless: browserHeadlessMode, args: [
           '--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-accelerated-2d-canvas',
           '--no-first-run', '--no-zygote', '--disable-gpu',
         ] })
@@ -40,7 +40,7 @@ const crawlLandFx = async()=>{
 const _login = async(page, urlLogin, username, password)=>{
     try {
         await page.goto(urlLogin)
-        await page.waitForTimeout(4000)
+        await page.waitForTimeout(2000)
     
         await page.fill('#mt4_id', username)
         await page.fill('#password', password)
@@ -61,28 +61,66 @@ const _getData = async(page, urlCrawl,fromDate , toDate)=>{
 
   await page.waitForSelector('#view_client_status_container');
 
-  const selectElement = await page.$('#account_no');
+  const servers = await page.$$('#server option');
 
-  // Get the list of options in the select element
-  const optionElements = await selectElement.$$('option');
+for (let i = 0; i < servers.length; i++) {
+  const server = servers[i];
+  const serverValue = await server.evaluate((el) => el.value);
 
-  // Loop through each option and select it one by one
-  for (const optionElement of optionElements) {
-    const value = await optionElement.evaluate((el) => el.value);
-    await page.selectOption('#account_no', value);
-
-    // Wait for a short time to see the change (optional)
-    await page.waitForTimeout(1000);
-
-    await page.fill('#start_date',fromDate)
-    await page.fill('#end_date',toDate)
-
-    await page.click('#filter_btn')
-    await page.waitForSelector('#datatables');
-
-
+  if (serverValue === "0" && i === 0) {
+    continue;
   }
 
+  await page.selectOption('#server', serverValue);
+
+  await page.waitForTimeout(3000);
+
+  const accountElements = await page.$$('#account_no option');
+  for (const accountElement of accountElements) {
+    const accountValue = await accountElement.evaluate((el) => el.value);
+    if (accountValue) {
+      await page.waitForTimeout(1000);
+
+      await page.selectOption('#account_no', accountValue);
+    }
+    await page.waitForTimeout(1000);
+
+    await page.fill('#start_date', fromDate);
+    await page.fill('#end_date', toDate);
+    await page.waitForTimeout(1000);
+
+    await page.click('#filter_btn');
+    await page.waitForLoadState('commit');
+   
+    while(true){
+    await page.waitForSelector('#datatables',{timeout:3000})
+    const elements = await page.$$('#datatables tbody tr')
+    for(const item of elements){
+      const listItem =[]
+      const transactionObj = {
+        plaform: metaTradePlatform.MT5
+      }
+      const tds = await item.$$('td')
+      for(let i = 0;i<tds.length;i++){
+        const tdText =await tds[i].textContent()
+        console.log(tdText);
+      }
+    }
+    const nextButton = await page.$('#datatables_next')
+    const isNextButton = await nextButton.evaluate((btn) => !btn.classList.contains('disabled'))
+    if(!nextButton){
+      break
+    }
+    if(!isNextButton){
+      break
+    }
+    
+    }
+
+    
+  }
+ await page.waitForTimeout(3000)
+}
 
 }
 module.exports ={
