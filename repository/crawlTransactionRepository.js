@@ -39,23 +39,45 @@ async function insertCrawlTransaction(transactionObj, page, dateFrom, dateTo) {
 }
 
 const insertCrawlCashback = async (data)=>{
-  try {
+  
     return await db.transaction(async (trx)=>{
-    
-      
-      const isInsertedCrawlCashback = await trx('crawl_transaction').insert(data)
-      if (!isInsertedCrawlCashback) {
+      const listResult = []
+      try {
+        const insertPromiseData = data.map(async (item)=>{
+         
+          let result = false
+          const isExistingRecord = await db('crawl_transaction')
+            .select('id')
+            .where({
+              'broker': item.broker,
+              'account': item.account,
+              [item.platform === '4' ? 'ticket' : 'deal_id']: item.platform === '4' ? item.ticket : item.deal_id
+            }).first()
+  
+          if (isExistingRecord) {
+            result = await trx('crawl_transaction')
+              .where('id', isExistingRecord.id)
+              .update(item)
+          } else {
+            result = await trx('crawl_transaction').insert(item)
+          }
+          listResult.push(result)
+        })
+  
+        await Promise.all(insertPromiseData)
+  
+        if (listResult.includes(false)) {
+          throw new Error('Insert or update failed') //  rollback if insert/update fail
+        }
+        return true
+      } catch (error) {
+        console.log(error)
         await trx.rollback()
         return false
       }
-    
-      return true
     })
-  } catch (error) {
-    console.log(error)
-    return false
   }
-}
+
 
 
 module.exports = {

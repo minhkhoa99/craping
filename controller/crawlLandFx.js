@@ -76,6 +76,7 @@ for (let i = 0; i < servers.length; i++) {
   await page.waitForTimeout(3000);
 
   const accountElements = await page.$$('#account_no option');
+  
   for (const accountElement of accountElements) {
     const accountValue = await accountElement.evaluate((el) => el.value);
     if (accountValue) {
@@ -83,17 +84,20 @@ for (let i = 0; i < servers.length; i++) {
 
       await page.selectOption('#account_no', accountValue);
     }
+
     await page.waitForTimeout(1000);
 
     await page.fill('#start_date', fromDate);
     await page.fill('#end_date', toDate);
-    await page.waitForTimeout(1000);
+    await page.waitForTimeout(3000);
 
     await page.click('#filter_btn');
-    await page.waitForLoadState('commit');
    
+    await page.waitForSelector('#datatables_wrapper')
+    await page.waitForTimeout(3000)
+
     while(true){
-    await page.waitForSelector('#datatables',{timeout:3000})
+   
     const elements = await page.$$('#datatables tbody tr')
     for(const item of elements){
       const listItem =[]
@@ -106,20 +110,19 @@ for (let i = 0; i < servers.length; i++) {
         console.log(tdText);
       }
     }
+    
     const nextButton = await page.$('#datatables_next')
     const isNextButton = await nextButton.evaluate((btn) => !btn.classList.contains('disabled'))
-    if(!nextButton){
+    if(!nextButton ||!isNextButton){
       break
     }
-    if(!isNextButton){
-      break
+   await nextButton.click()
     }
-    
-    }
-
-    
+await page.waitForTimeout(1000)
+ 
   }
- await page.waitForTimeout(3000)
+    
+
 }
 
 }
