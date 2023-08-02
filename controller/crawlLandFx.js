@@ -75,55 +75,60 @@ for (let i = 0; i < servers.length; i++) {
 
   await page.waitForTimeout(3000);
 
+
   const accountElements = await page.$$('#account_no option');
   
   for (const accountElement of accountElements) {
     const accountValue = await accountElement.evaluate((el) => el.value);
-    if (accountValue) {
-      await page.waitForTimeout(1000);
-
-      await page.selectOption('#account_no', accountValue);
-    }
-
-    await page.waitForTimeout(1000);
+   if(accountValue){
+    await page.waitForTimeout(2000);
+    await page.selectOption('#account_no', accountValue);
+   }
+      
+   await page.waitForTimeout(2000);
 
     await page.fill('#start_date', fromDate);
     await page.fill('#end_date', toDate);
-    await page.waitForTimeout(3000);
+    await page.waitForTimeout(2000);
+
+    await page.selectOption('select[name="datatables_length"]', '100');
 
     await page.click('#filter_btn');
    
-    await page.waitForSelector('#datatables_wrapper')
-    await page.waitForTimeout(3000)
 
+    await page.waitForTimeout(4000)
+ 
     while(true){
    
-    const elements = await page.$$('#datatables tbody tr')
-    for(const item of elements){
+      const elements = await page.$$('#datatables tbody tr')
       const listItem =[]
-      const transactionObj = {
-        plaform: metaTradePlatform.MT5
+      for(const item of elements){
+        const listTxt =[]
+        const transactionObj = {
+          plaform: metaTradePlatform.MT5
+        }
+        const tds = await item.$$('td')
+        for(let i = 0;i<tds.length;i++){
+          const tdText =await tds[i].textContent()
+          listTxt.push(tdText)
+        }
+        listItem.push(listTxt)
+
       }
-      const tds = await item.$$('td')
-      for(let i = 0;i<tds.length;i++){
-        const tdText =await tds[i].textContent()
-        console.log(tdText);
+      console.log('list',listItem);
+      const nextButton = await page.$('#datatables_next')
+      const isNextButton = await nextButton.evaluate((btn) => !btn.classList.contains('disabled'))
+      console.log(isNextButton);
+      if(!nextButton ||!isNextButton){
+        break
       }
-    }
-    
-    const nextButton = await page.$('#datatables_next')
-    const isNextButton = await nextButton.evaluate((btn) => !btn.classList.contains('disabled'))
-    if(!nextButton ||!isNextButton){
-      break
-    }
-   await nextButton.click()
-    }
-await page.waitForTimeout(1000)
- 
+     await nextButton.click()
+      }
   }
-    
 
 }
+
+  
 
 }
 module.exports ={
