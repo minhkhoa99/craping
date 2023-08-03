@@ -81,10 +81,10 @@ for (let i = 0; i < servers.length; i++) {
   for (const accountElement of accountElements) {
     const accountValue = await accountElement.evaluate((el) => el.value);
    if(accountValue){
-    await page.waitForTimeout(2000);
+    await page.waitForTimeout(3000);
     await page.selectOption('#account_no', accountValue);
    }
-      
+    
    await page.waitForTimeout(2000);
 
     await page.fill('#start_date', fromDate);
@@ -95,7 +95,7 @@ for (let i = 0; i < servers.length; i++) {
 
     await page.click('#filter_btn');
    
-
+    await page.waitForLoadState('load')
     await page.waitForTimeout(4000)
  
     while(true){
@@ -104,18 +104,26 @@ for (let i = 0; i < servers.length; i++) {
       const listItem =[]
       for(const item of elements){
         const listTxt =[]
-        const transactionObj = {
-          plaform: metaTradePlatform.MT5
+        const transactionObj = {}
+        if(serverValue==='4'){
+          console.log(accountValue);
+          transactionObj.platform = metaTradePlatform.MT5
+
+        }else{
+          console.log(accountValue);
+          transactionObj.platform = metaTradePlatform.MT4
         }
+        console.log(transactionObj);
         const tds = await item.$$('td')
         for(let i = 0;i<tds.length;i++){
           const tdText =await tds[i].textContent()
+         
           listTxt.push(tdText)
         }
         listItem.push(listTxt)
 
       }
-      console.log('list',listItem);
+      // console.log('list',listItem);
       const nextButton = await page.$('#datatables_next')
       const isNextButton = await nextButton.evaluate((btn) => !btn.classList.contains('disabled'))
       console.log(isNextButton);
@@ -123,7 +131,10 @@ for (let i = 0; i < servers.length; i++) {
         break
       }
      await nextButton.click()
+
+     await page.waitForLoadState('load')
       }
+      await page.waitForLoadState('load')
   }
 
 }
