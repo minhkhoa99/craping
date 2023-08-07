@@ -31,7 +31,7 @@ const crawlLandFx = async()=>{
        
         
           const isGetData =  _getData(page,LANDFX_URL_CRAWL, fromDate, toDate)
-        const isGetType =  _getDataAccountType(context,LANDFX_URL_CRAWL_TYPE)
+        const isGetType = _getDataAccountType(context,LANDFX_URL_CRAWL_TYPE)
         const [dataTrading,dataClient] = await Promise.all([isGetData,isGetType])
      
       console.log('dataTrading', dataTrading);
@@ -86,15 +86,17 @@ for (let i = 0; i < servers.length; i++) {
   if (serverValue === "0" && i === 0) {
     continue;
   }
+  await page.waitForTimeout(3000)
   await page.selectOption('#server', serverValue);
-  await page.waitForTimeout(3000);
+  await page.waitForLoadState('load');
+  await page.waitForTimeout(3000)
 
   const accountElements = await page.$$('#account_no option');
   for (const accountElement of accountElements) {
     let flag = true
     const accountValue = await accountElement.evaluate((el) => el.value);
      if(accountValue){
-      await page.waitForLoadState('load')
+   
       await page.selectOption('#account_no', accountValue);
        
      }
@@ -136,10 +138,8 @@ for (let i = 0; i < servers.length; i++) {
             }
           
           }
-          if(listTxt.length>0){
             listItem.push(listTxt);
-
-          }
+         
          
         }
         const nextButton = await page.$('#datatables_next');
@@ -150,16 +150,18 @@ for (let i = 0; i < servers.length; i++) {
       
         }else{
           await nextButton.click();
-          await page.waitForLoadState('load');
+          await page.waitForFunction(() => {
+            const processingDiv = document.querySelector('#datatables_processing');
+            return window.getComputedStyle(processingDiv).display === 'none';
+          });
         }
 
-       
       }
-      // await page.waitForLoadState('load')
- 
+     
     }
     
 }
+
 return listItem
 
 }
@@ -170,6 +172,10 @@ const _getDataAccountType = async (context,LANDFX_URL_CRAWL_TYPE)=>{
   await page.waitForSelector('#view_client_status_container');
 
   await page.selectOption('select[name="datatables_length"]', '100');
+  await page.waitForFunction(() => {
+    const processingDiv = document.querySelector('#datatables_processing');
+    return window.getComputedStyle(processingDiv).display === 'none';
+  });
   await page.waitForTimeout(3000)
   const listItem =[]
 let flag = true
@@ -191,16 +197,18 @@ let flag = true
 
     }
       
-    const nextButton = await page.$('#datatables_next');
-    const isNextDisabled = await nextButton.getAttribute('class');
-    if (!isNextDisabled.includes('disabled')) {
-      
-      await nextButton.click();
-      await page.waitForSelector({state:'visible'})
-    }else{
-      flag = false
+   
+    const isNextButton = await page.$eval('#datatables_next', button => !button.classList.contains('disabled'));
+    if (!isNextButton) {
+      flag = false 
     }
+    await page.click('#datatables_next',{ force: true });
+    await page.waitForFunction(() => {
+      const processingDiv = document.querySelector('#datatables_processing');
+      return window.getComputedStyle(processingDiv).display === 'none';
+    });
     }
+  
     return listItem
 }
 module.exports ={
