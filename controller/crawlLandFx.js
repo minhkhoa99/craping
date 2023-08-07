@@ -30,20 +30,22 @@ const crawlLandFx = async()=>{
 
        
         
-          const isGetData = _getData(page,LANDFX_URL_CRAWL, fromDate, toDate)
+          const isGetData =  _getData(page,LANDFX_URL_CRAWL, fromDate, toDate)
         const isGetType =  _getDataAccountType(context,LANDFX_URL_CRAWL_TYPE)
-        const [dataClient,dataTrading] = await Promise.all([isGetType,isGetData])
+        const [dataTrading,dataClient] = await Promise.all([isGetData,isGetType])
      
       console.log('dataTrading', dataTrading);
+      console.log('dataClient', dataClient);
         let dataResult
         for(const item of dataClient){
-          dataResult = dataTrading.map((data)=>{
+          dataResult = dataTrading.filter((data)=>{
            if(data[0]===item[0]){
              return data.push(item[1],item[2])
            }
          })
         
         }
+        console.log(dataResult);
        
     }catch(error){
         console.log(error);
@@ -53,7 +55,7 @@ const crawlLandFx = async()=>{
 const _login = async(page, urlLogin, username, password)=>{
     try {
         await page.goto(urlLogin)
-        await page.waitForTimeout(2000)
+        await page.waitForLoadState('domcontentloaded')
     
         await page.fill('#mt4_id', username)
         await page.fill('#password', password)
@@ -84,22 +86,19 @@ for (let i = 0; i < servers.length; i++) {
   if (serverValue === "0" && i === 0) {
     continue;
   }
-  await page.waitForTimeout(3000);
-
   await page.selectOption('#server', serverValue);
-
-  await page.waitForTimeout(1000);
+  await page.waitForTimeout(3000);
 
   const accountElements = await page.$$('#account_no option');
   for (const accountElement of accountElements) {
     let flag = true
     const accountValue = await accountElement.evaluate((el) => el.value);
      if(accountValue){
-      await page.waitForSelector('#account_no');
+      await page.waitForLoadState('load')
       await page.selectOption('#account_no', accountValue);
-      await page.waitForTimeout(3000);
+       
      }
-
+       await page.waitForTimeout(1000);
        await page.fill('#start_date', fromDate);
        await page.fill('#end_date', toDate);
        await page.waitForTimeout(2000);
@@ -131,14 +130,16 @@ for (let i = 0; i < servers.length; i++) {
 
           const tds = await item.$$('td');
           for (let i = 0; i < tds.length; i++) {
-            if([0,2,3,4,5,6,7,8,9].includes(i)){
-              
+            if([0,2,3,4,5,6,7,8,9].includes(i)){  
               const tdText = await tds[i].textContent();
               listTxt.push(tdText);
             }
           
           }
-          listItem.push(listTxt);
+          if(listTxt.length>0){
+            listItem.push(listTxt);
+
+          }
          
         }
         const nextButton = await page.$('#datatables_next');
@@ -154,9 +155,8 @@ for (let i = 0; i < servers.length; i++) {
 
        
       }
-     
-      
-    
+      // await page.waitForLoadState('load')
+ 
     }
     
 }
@@ -170,9 +170,10 @@ const _getDataAccountType = async (context,LANDFX_URL_CRAWL_TYPE)=>{
   await page.waitForSelector('#view_client_status_container');
 
   await page.selectOption('select[name="datatables_length"]', '100');
+  await page.waitForTimeout(3000)
   const listItem =[]
-
-  while(true){
+let flag = true
+  while(flag){
    
     const elements = await page.$$('#datatables tbody tr')
     for(const item of elements){
@@ -189,16 +190,16 @@ const _getDataAccountType = async (context,LANDFX_URL_CRAWL_TYPE)=>{
       listItem.push(listTxt)
 
     }
-      const nextButton = await page.$('#datatables_next');
-        const isNextButton = await nextButton.evaluate((btn) => btn.classList.contains('disabled'));
-       
-        if (!nextButton || !isNextButton) {
-          break
       
-        }
-          await nextButton.click();
-         await page.waitForTimeout(3000)
-  
+    const nextButton = await page.$('#datatables_next');
+    const isNextDisabled = await nextButton.getAttribute('class');
+    if (!isNextDisabled.includes('disabled')) {
+      
+      await nextButton.click();
+      await page.waitForSelector({state:'visible'})
+    }else{
+      flag = false
+    }
     }
     return listItem
 }
